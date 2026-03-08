@@ -19,6 +19,17 @@ def create_app():
 
     # 注册蓝图
     from .api.llm import llm_bp
+    from .api.recommendation import rec_bp
+    from .api.user import user_bp
+    from .api.post import post_bp
+    from .api.auth import auth_bp
+    from .api.search import search_bp
+
     app.register_blueprint(llm_bp, url_prefix='/api/llm')
+    app.register_blueprint(rec_bp, url_prefix='/api')
+    app.register_blueprint(user_bp, url_prefix='/api/user')
+    app.register_blueprint(post_bp, url_prefix='/api/post')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(search_bp, url_prefix='/api/search')
 
     return app

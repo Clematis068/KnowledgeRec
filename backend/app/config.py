@@ -27,3 +27,7 @@ class Config:
     DASHSCOPE_API_KEY = os.getenv('DASHSCOPE_API_KEY', '')
     DASHSCOPE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     QWEN_MODEL = os.getenv('QWEN_MODEL', 'qwen-plus')
+
+    # JWT
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
+    JWT_EXPIRATION_HOURS = int(os.getenv('JWT_EXPIRATION_HOURS', '24'))
