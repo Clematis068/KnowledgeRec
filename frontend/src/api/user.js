@@ -50,6 +50,26 @@ export function getFollowStatus(userId) {
   return request.get(`/user/${userId}/follow_status`)
 }
 
+/** 获取当前用户已屏蔽作者 */
+export function getBlockedAuthors() {
+  return request.get('/user/blocked/authors')
+}
+
+/** 获取当前用户已屏蔽领域 */
+export function getBlockedDomains() {
+  return request.get('/user/blocked/domains')
+}
+
+/** 取消屏蔽作者 */
+export function removeBlockedAuthor(authorId) {
+  return request.delete(`/user/blocked/author/${authorId}`)
+}
+
+/** 取消屏蔽领域 */
+export function removeBlockedDomain(domainId) {
+  return request.delete(`/user/blocked/domain/${domainId}`)
+}
+
 /** 更新个人资料 */
 export function updateProfile(data) {
   return request.put('/user/profile', data)

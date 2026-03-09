@@ -11,6 +11,7 @@
       <router-link :to="`/posts/${b.post_id}`" class="post-link">
         帖子 #{{ b.post_id }}
       </router-link>
+      <span v-if="b.comment_text" class="comment-preview">{{ b.comment_text }}</span>
       <span v-if="b.duration" class="duration">{{ b.duration }}s</span>
     </el-timeline-item>
     <el-empty v-if="behaviors.length === 0" description="暂无行为记录" />
@@ -21,17 +22,19 @@
 defineProps({ behaviors: { type: Array, default: () => [] } })
 
 const typeMap = {
-  view: 'primary',
+  browse: 'primary',
   like: 'success',
+  favorite: 'warning',
   comment: 'warning',
-  share: 'danger',
+  dislike: 'danger',
 }
 
 const labelMap = {
-  view: '浏览',
+  browse: '浏览',
   like: '点赞',
+  favorite: '收藏',
   comment: '评论',
-  share: '分享',
+  dislike: '不感兴趣',
 }
 </script>
 
@@ -53,5 +56,12 @@ const labelMap = {
   font-size: 12px;
   color: #909399;
   margin-left: 8px;
+}
+
+.comment-preview {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 13px;
+  color: #606266;
 }
 </style>

@@ -53,6 +53,15 @@
           >
             回复
           </el-button>
+          <el-button
+            v-if="authStore.userId === c.user_id"
+            text
+            size="small"
+            class="delete-btn"
+            @click="handleDeleteComment(c)"
+          >
+            删除
+          </el-button>
         </div>
       </div>
       <el-empty v-if="!loading && comments.length === 0" description="暂无评论" />
@@ -72,8 +81,8 @@
 
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { getComments, postComment } from '../../api/post'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { deleteComment, getComments, postComment } from '../../api/post'
 import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps({
@@ -126,6 +135,21 @@ async function handleSubmit() {
     ElMessage.success('评论成功')
   } finally {
     submitting.value = false
+  }
+}
+
+async function handleDeleteComment(comment) {
+  try {
+    await ElMessageBox.confirm('确认删除这条评论吗？', '删除评论', {
+      type: 'warning',
+    })
+    await deleteComment(props.postId, comment.id)
+    await fetchComments()
+    ElMessage.success('评论已删除')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      // 错误已由拦截器处理
+    }
   }
 }
 
@@ -222,6 +246,16 @@ onMounted(fetchComments)
 
 .reply-btn:hover {
   color: #409eff;
+}
+
+.delete-btn {
+  margin-top: 4px;
+  color: #f56c6c;
+  padding: 0;
+}
+
+.delete-btn:hover {
+  color: #f56c6c;
 }
 
 .comment-pagination {

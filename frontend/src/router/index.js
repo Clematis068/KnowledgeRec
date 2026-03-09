@@ -40,9 +40,21 @@ const routes = [
         component: () => import('../views/PostDetailPage.vue'),
       },
       {
+        path: 'posts/:id/edit',
+        name: 'EditPost',
+        component: () => import('../views/EditPostPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
         path: 'create-post',
         name: 'CreatePost',
         component: () => import('../views/CreatePostPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
+        path: 'my-posts',
+        name: 'MyPosts',
+        component: () => import('../views/MyPostsPage.vue'),
         meta: { requiresAuth: true },
       },
       {

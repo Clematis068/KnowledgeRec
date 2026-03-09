@@ -38,6 +38,9 @@
               <el-dropdown-item command="recommend">
                 <el-icon><Star /></el-icon>我的推荐
               </el-dropdown-item>
+              <el-dropdown-item command="my-posts">
+                <el-icon><Document /></el-icon>我的发帖
+              </el-dropdown-item>
               <el-dropdown-item command="profile">
                 <el-icon><User /></el-icon>个人资料
               </el-dropdown-item>
@@ -76,6 +79,8 @@ function handleSearch() {
 function handleCommand(cmd) {
   if (cmd === 'recommend') {
     router.push('/recommend')
+  } else if (cmd === 'my-posts') {
+    router.push('/my-posts')
   } else if (cmd === 'profile') {
     router.push(`/users/${authStore.userId}`)
   } else if (cmd === 'logout') {

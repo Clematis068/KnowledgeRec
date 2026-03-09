@@ -1,11 +1,10 @@
 <template>
   <el-select
-    v-model="selected"
+    v-model="selectedUserId"
     filterable
     placeholder="选择用户"
     :loading="loading"
     style="width: 300px"
-    @change="$emit('update:modelValue', $event)"
   >
     <el-option
       v-for="u in users"
@@ -20,10 +19,8 @@
 import { ref, onMounted } from 'vue'
 import { getUserList } from '../../api/user'
 
-defineProps({ modelValue: Number })
-defineEmits(['update:modelValue'])
+const selectedUserId = defineModel({ type: Number, default: null })
 
-const selected = ref(null)
 const users = ref([])
 const loading = ref(false)
 

@@ -8,7 +8,7 @@ class UserBehavior(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
     post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False, index=True)
-    behavior_type = db.Column(db.Enum('browse', 'like', 'favorite', 'comment', name='behavior_enum'), nullable=False)
+    behavior_type = db.Column(db.Enum('browse', 'like', 'favorite', 'comment', 'dislike', name='behavior_enum'), nullable=False)
     comment_text = db.Column(db.Text)       # only for comment type
     parent_id = db.Column(db.Integer, db.ForeignKey('user_behavior.id'), nullable=True)  # 回复的父评论ID
     duration = db.Column(db.Integer)         # browse duration in seconds
@@ -49,4 +49,20 @@ class UserFollow(db.Model):
 
     follower_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
     followed_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+
+class UserBlockedAuthor(db.Model):
+    __tablename__ = 'user_blocked_author'
+
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+
+class UserBlockedDomain(db.Model):
+    __tablename__ = 'user_blocked_domain'
+
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    domain_id = db.Column(db.Integer, db.ForeignKey('domain.id'), primary_key=True)
     created_at = db.Column(db.DateTime, default=datetime.now)

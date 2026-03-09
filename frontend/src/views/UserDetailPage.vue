@@ -63,7 +63,13 @@
         <el-tabs v-model="activeTab" @tab-change="onTabChange">
           <el-tab-pane label="帖子" name="posts">
             <div v-loading="tabLoading">
-              <PostCard v-for="p in userPosts" :key="p.id" :post="p" />
+              <div v-for="p in userPosts" :key="p.id" class="user-post-item">
+                <PostCard :post="p" />
+                <div v-if="isOwnProfile" class="post-manage-actions">
+                  <el-button size="small" @click="goToEditPost(p.id)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="handleDeletePost(p.id)">删除</el-button>
+                </div>
+              </div>
               <el-empty v-if="!tabLoading && userPosts.length === 0" description="暂无帖子" />
             </div>
             <div v-if="userPostsTotal > pageSize" class="tab-pagination">
@@ -122,6 +128,46 @@
               <el-empty v-if="!tabLoading && followersList.length === 0" description="暂无粉丝" />
             </div>
           </el-tab-pane>
+
+          <el-tab-pane label="行为" name="behaviors">
+            <div v-loading="tabLoading">
+              <BehaviorTimeline :behaviors="userBehaviors" />
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane v-if="isOwnProfile" label="屏蔽" name="blocks">
+            <div v-loading="tabLoading" class="block-panel">
+              <div class="block-section">
+                <div class="block-title">已屏蔽作者</div>
+                <div v-if="blockedAuthors.length" class="block-list">
+                  <div v-for="author in blockedAuthors" :key="author.id" class="blocked-item">
+                    <div class="blocked-main" @click="$router.push(`/users/${author.id}`)">
+                      <el-avatar :size="36" class="user-item-avatar">
+                        {{ author.username?.charAt(0)?.toUpperCase() }}
+                      </el-avatar>
+                      <div>
+                        <div class="user-item-name">{{ author.username }}</div>
+                        <div class="user-item-bio">{{ author.bio || '暂无简介' }}</div>
+                      </div>
+                    </div>
+                    <el-button size="small" @click="handleRemoveBlockedAuthor(author.id)">取消屏蔽</el-button>
+                  </div>
+                </div>
+                <el-empty v-else description="暂无已屏蔽作者" />
+              </div>
+
+              <div class="block-section">
+                <div class="block-title">已屏蔽领域</div>
+                <div v-if="blockedDomains.length" class="domain-list">
+                  <div v-for="domain in blockedDomains" :key="domain.id" class="blocked-domain-item">
+                    <el-tag size="large" type="warning">{{ domain.name }}</el-tag>
+                    <el-button size="small" @click="handleRemoveBlockedDomain(domain.id)">取消屏蔽</el-button>
+                  </div>
+                </div>
+                <el-empty v-else description="暂无已屏蔽领域" />
+              </div>
+            </div>
+          </el-tab-pane>
         </el-tabs>
       </el-card>
     </template>
@@ -163,15 +209,17 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  getUserDetail, getUserPosts, getUserFavorites,
+  getBlockedAuthors, getBlockedDomains, getUserBehaviors, getUserDetail, getUserPosts, getUserFavorites,
   followUser, unfollowUser, getFollowers, getFollowing,
-  getFollowStatus, updateProfile,
+  getFollowStatus, removeBlockedAuthor, removeBlockedDomain, updateProfile,
 } from '../api/user'
 import { getTags } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
+import { deletePost } from '../api/post'
 import PostCard from '../components/post/PostCard.vue'
+import BehaviorTimeline from '../components/user/BehaviorTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -202,6 +250,9 @@ const favoritesTotal = ref(0)
 // 关注/粉丝 tab
 const followingList = ref([])
 const followersList = ref([])
+const userBehaviors = ref([])
+const blockedAuthors = ref([])
+const blockedDomains = ref([])
 
 // 编辑资料
 const editDialogVisible = ref(false)
@@ -287,6 +338,32 @@ async function fetchFollowersList() {
   }
 }
 
+async function fetchUserBehaviorsList() {
+  tabLoading.value = true
+  try {
+    const data = await getUserBehaviors(userId.value, 50)
+    userBehaviors.value = data.behaviors || []
+    loadedTabs.value.add('behaviors')
+  } finally {
+    tabLoading.value = false
+  }
+}
+
+async function fetchBlockedItems() {
+  tabLoading.value = true
+  try {
+    const [authorsData, domainsData] = await Promise.all([
+      getBlockedAuthors(),
+      getBlockedDomains(),
+    ])
+    blockedAuthors.value = authorsData.authors || []
+    blockedDomains.value = domainsData.domains || []
+    loadedTabs.value.add('blocks')
+  } finally {
+    tabLoading.value = false
+  }
+}
+
 function onTabChange(tab) {
   if (loadedTabs.value.has(tab)) return
   const fetchMap = {
@@ -294,6 +371,8 @@ function onTabChange(tab) {
     favorites: fetchUserFavorites,
     following: fetchFollowingList,
     followers: fetchFollowersList,
+    behaviors: fetchUserBehaviorsList,
+    blocks: fetchBlockedItems,
   }
   fetchMap[tab]?.()
 }
@@ -329,6 +408,45 @@ async function handleSaveProfile() {
   }
 }
 
+function goToEditPost(postId) {
+  router.push(`/posts/${postId}/edit`)
+}
+
+async function handleDeletePost(postId) {
+  try {
+    await ElMessageBox.confirm('删除后不可恢复，确认删除这篇帖子吗？', '删除帖子', {
+      type: 'warning',
+    })
+    await deletePost(postId)
+    await fetchUserPosts()
+    ElMessage.success('帖子已删除')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      // 错误已由拦截器处理
+    }
+  }
+}
+
+async function handleRemoveBlockedAuthor(authorId) {
+  try {
+    await removeBlockedAuthor(authorId)
+    blockedAuthors.value = blockedAuthors.value.filter((author) => author.id !== authorId)
+    ElMessage.success('已取消屏蔽作者')
+  } catch {
+    // 错误已由拦截器处理
+  }
+}
+
+async function handleRemoveBlockedDomain(domainId) {
+  try {
+    await removeBlockedDomain(domainId)
+    blockedDomains.value = blockedDomains.value.filter((domain) => domain.id !== domainId)
+    ElMessage.success('已取消屏蔽领域')
+  } catch {
+    // 错误已由拦截器处理
+  }
+}
+
 // 监听路由变化（用户主页间跳转）
 watch(
   () => route.params.id,
@@ -339,6 +457,12 @@ watch(
     }
   }
 )
+
+watch(activeTab, (tab) => {
+  if (!loadedTabs.value.has(tab)) {
+    onTabChange(tab)
+  }
+})
 
 onMounted(async () => {
   fetchProfile()
@@ -452,6 +576,59 @@ watch(editDialogVisible, (visible) => {
   margin-top: 16px;
   display: flex;
   justify-content: center;
+}
+
+.user-post-item {
+  margin-bottom: 12px;
+}
+
+.post-manage-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: -2px 0 12px;
+}
+
+.block-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.block-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.block-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.block-list,
+.domain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.blocked-item,
+.blocked-domain-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.blocked-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
 }
 
 .user-item {

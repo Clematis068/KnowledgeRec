@@ -18,10 +18,22 @@
         <span class="legend graph">Graph {{ (item.graph_score || 0).toFixed(3) }}</span>
         <span class="legend semantic">Semantic {{ (item.semantic_score || 0).toFixed(3) }}</span>
       </div>
-      <el-button size="small" type="primary" link @click="$emit('showReason', item.post_id)">
-        <el-icon><ChatDotRound /></el-icon>
-        推荐理由
-      </el-button>
+      <div class="action-buttons">
+        <el-button size="small" type="primary" link @click="$emit('showReason', item.post_id)">
+          <el-icon><ChatDotRound /></el-icon>
+          推荐理由
+        </el-button>
+        <el-button
+          v-if="allowFeedback"
+          size="small"
+          type="danger"
+          link
+          @click="$emit('dislike', item.post_id)"
+        >
+          <el-icon><CircleClose /></el-icon>
+          不感兴趣
+        </el-button>
+      </div>
     </div>
   </el-card>
 </template>
@@ -29,8 +41,11 @@
 <script setup>
 import ScoreBar from './ScoreBar.vue'
 
-defineProps({ item: { type: Object, required: true } })
-defineEmits(['showReason'])
+defineProps({
+  item: { type: Object, required: true },
+  allowFeedback: { type: Boolean, default: false },
+})
+defineEmits(['showReason', 'dislike'])
 </script>
 
 <style scoped>
@@ -78,6 +93,12 @@ defineEmits(['showReason'])
   gap: 12px;
   font-size: 11px;
   font-family: monospace;
+}
+
+.action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .legend::before {

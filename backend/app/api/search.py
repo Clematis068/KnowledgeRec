@@ -1,13 +1,16 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from app import db
 from app.models.post import Post
 from app.models.user import User
+from app.utils.auth import optional_login
+from app.utils.content_filter import filter_posts
 from app.utils.helpers import cosine_similarity
 
 search_bp = Blueprint('search', __name__)
 
 
 @search_bp.route('', methods=['GET'])
+@optional_login
 def search():
     """搜索帖子或用户"""
     q = request.args.get('q', '').strip()
@@ -49,6 +52,7 @@ def _search_posts(q, page, per_page):
             Post.content.like(like_pattern),
         )
     ).all()
+    candidates = filter_posts(candidates, g.current_user.id if g.current_user else None)
 
     # 2. 千问 Embedding 语义排序
     try:
