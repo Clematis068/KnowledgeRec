@@ -20,6 +20,10 @@
       <el-icon><EditPen /></el-icon>
       <span>发帖</span>
     </el-menu-item>
+    <el-menu-item index="/my-posts">
+      <el-icon><Files /></el-icon>
+      <span>我的发帖</span>
+    </el-menu-item>
   </el-menu>
 </template>
 
@@ -35,6 +39,7 @@ const activeMenu = computed(() => {
   if (path.startsWith('/hot')) return '/hot'
   if (path.startsWith('/posts')) return '/posts'
   if (path.startsWith('/create-post')) return '/create-post'
+  if (path.startsWith('/my-posts')) return '/my-posts'
   return path
 })
 </script>
