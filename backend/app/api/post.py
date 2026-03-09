@@ -240,7 +240,7 @@ def get_comments(post_id):
 
     query = UserBehavior.query.filter_by(
         post_id=post_id, behavior_type='comment'
-    ).order_by(UserBehavior.created_at.desc())
+    ).order_by(UserBehavior.created_at.asc())
 
     pagination = query.paginate(page=page, per_page=per_page)
     return jsonify({

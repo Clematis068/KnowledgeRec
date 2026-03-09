@@ -29,8 +29,14 @@
     </div>
 
     <div v-loading="loading" class="comment-list">
-      <div v-for="c in comments" :key="c.id" class="comment-item">
-        <el-avatar :size="32" class="comment-avatar">
+      <div
+        v-for="c in commentTree"
+        :key="c.id"
+        class="comment-item"
+        :class="{ 'comment-nested': c.depth > 0 }"
+        :style="{ paddingLeft: c.depth * 32 + 'px' }"
+      >
+        <el-avatar :size="c.depth > 0 ? 28 : 32" class="comment-avatar">
           {{ c.username?.charAt(0)?.toUpperCase() }}
         </el-avatar>
         <div class="comment-body">
@@ -71,7 +77,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getComments, postComment } from '../../api/post'
 import { useAuthStore } from '../../stores/auth'
@@ -90,6 +96,31 @@ const pageSize = 20
 const total = ref(0)
 const replyTo = ref(null)
 const commentInputRef = ref(null)
+
+const commentTree = computed(() => {
+  const map = new Map()
+  const roots = []
+  for (const c of comments.value) {
+    map.set(c.id, { ...c, children: [] })
+  }
+  for (const c of comments.value) {
+    const node = map.get(c.id)
+    if (c.parent_id && map.has(c.parent_id)) {
+      map.get(c.parent_id).children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+  const result = []
+  function flatten(nodes, depth) {
+    for (const node of nodes) {
+      result.push({ ...node, depth })
+      flatten(node.children, depth + 1)
+    }
+  }
+  flatten(roots, 0)
+  return result
+})
 
 async function fetchComments() {
   loading.value = true
@@ -161,6 +192,10 @@ onMounted(fetchComments)
   gap: 12px;
   padding: 12px 0;
   border-bottom: 1px solid #f0f0f0;
+}
+
+.comment-nested {
+  border-left: 2px solid #e4e7ed;
 }
 
 .comment-item:last-child {

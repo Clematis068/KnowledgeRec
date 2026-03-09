@@ -3,6 +3,7 @@
 - ALTER TABLE user ADD password_hash, gender
 - CREATE TABLE user_tag
 - 为已有用户设默认密码 123456、随机 gender、分配兴趣标签
+- 模拟数据
 """
 import sys
 import os
