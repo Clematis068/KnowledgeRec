@@ -16,6 +16,7 @@ def create_post():
     content = data.get('content', '').strip()
     domain_id = data.get('domain_id')
     tag_ids = data.get('tag_ids', [])
+    tag_names = data.get('tags', [])
 
     if not title or not content or not domain_id:
         return jsonify({"error": "标题、正文和领域不能为空"}), 400
@@ -27,11 +28,19 @@ def create_post():
         domain_id=domain_id,
     )
 
-    # 绑定标签
-    if tag_ids:
-        from app.models.tag import Tag
-        tags = Tag.query.filter(Tag.id.in_(tag_ids)).all()
+    # 绑定标签：支持 tag_ids（旧）和 tags 名称列表（新，自动创建不存在的标签）
+    from app.models.tag import Tag
+    if tag_names:
+        tags = []
+        for name in tag_names:
+            tag = Tag.query.filter_by(name=name).first()
+            if not tag:
+                tag = Tag(name=name, domain_id=domain_id)
+                db.session.add(tag)
+            tags.append(tag)
         post.tags = tags
+    elif tag_ids:
+        post.tags = Tag.query.filter(Tag.id.in_(tag_ids)).all()
 
     # LLM 自动生成摘要
     try:

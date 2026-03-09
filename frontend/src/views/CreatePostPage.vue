@@ -14,22 +14,34 @@
       </el-form-item>
 
       <el-form-item label="领域" prop="domain_id">
-        <el-select v-model="form.domain_id" placeholder="请选择领域" style="width: 100%" @change="onDomainChange">
+        <el-select v-model="form.domain_id" placeholder="请选择领域" style="width: 100%">
           <el-option v-for="d in domains" :key="d.id" :label="d.name" :value="d.id" />
         </el-select>
       </el-form-item>
 
       <el-form-item label="标签">
-        <el-checkbox-group v-model="form.tag_ids">
-          <el-checkbox
-            v-for="tag in filteredTags"
-            :key="tag.id"
-            :label="tag.id"
+        <div class="tag-input-area">
+          <el-tag
+            v-for="tag in form.tags"
+            :key="tag"
+            closable
+            style="margin-right: 6px; margin-bottom: 6px"
+            @close="removeTag(tag)"
           >
-            {{ tag.name }}
-          </el-checkbox>
-        </el-checkbox-group>
-        <div v-if="!form.domain_id" class="tag-hint">请先选择领域</div>
+            {{ tag }}
+          </el-tag>
+          <el-input
+            v-if="tagInputVisible"
+            ref="tagInputRef"
+            v-model="tagInputValue"
+            size="small"
+            style="width: 120px"
+            placeholder="输入标签"
+            @keyup.enter="confirmTag"
+            @blur="confirmTag"
+          />
+          <el-button v-else size="small" @click="showTagInput">+ 添加标签</el-button>
+        </div>
       </el-form-item>
 
       <el-form-item label="正文" prop="content">
@@ -51,14 +63,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createPost } from '../api/post'
-import { getTags } from '../api/auth'
 
 const router = useRouter()
-
 const domains = [
   { id: 1, name: '计算机科学' },
   { id: 2, name: '数学' },
@@ -67,14 +77,19 @@ const domains = [
   { id: 5, name: '经济学' },
 ]
 
-const allTags = ref([])
 const formRef = ref()
 const submitting = ref(false)
+const createdPostId = ref(null)
+
+// 标签输入
+const tagInputVisible = ref(false)
+const tagInputValue = ref('')
+const tagInputRef = ref()
 
 const form = ref({
   title: '',
   domain_id: null,
-  tag_ids: [],
+  tags: [],
   content: '',
 })
 
@@ -84,14 +99,28 @@ const rules = {
   content: [{ required: true, message: '请输入正文', trigger: 'blur' }],
 }
 
-const filteredTags = computed(() => {
-  if (!form.value.domain_id) return []
-  return allTags.value.filter(t => t.domain_id === form.value.domain_id)
-})
-
-function onDomainChange() {
-  form.value.tag_ids = []
+function showTagInput() {
+  tagInputVisible.value = true
+  nextTick(() => tagInputRef.value?.focus())
 }
+
+function confirmTag() {
+  const val = tagInputValue.value.trim()
+  if (val && !form.value.tags.includes(val)) {
+    form.value.tags.push(val)
+  }
+  tagInputVisible.value = false
+  tagInputValue.value = ''
+}
+
+function removeTag(tag) {
+  form.value.tags = form.value.tags.filter(t => t !== tag)
+}
+
+// 导航完全从表单提交中解耦：DOM 更新完成后在独立 effect 中执行
+watch(createdPostId, (id) => {
+  if (id) router.replace(`/posts/${id}`)
+}, { flush: 'post' })
 
 async function handleSubmit() {
   const valid = await formRef.value.validate().catch(() => false)
@@ -101,20 +130,11 @@ async function handleSubmit() {
   try {
     const res = await createPost(form.value)
     ElMessage.success('发布成功')
-    router.push(`/posts/${res.id}`)
-  } finally {
+    createdPostId.value = res.id
+  } catch {
     submitting.value = false
   }
 }
-
-onMounted(async () => {
-  try {
-    const data = await getTags()
-    allTags.value = data.tags || data
-  } catch {
-    // ignore
-  }
-})
 </script>
 
 <style scoped>
@@ -129,8 +149,10 @@ onMounted(async () => {
   margin-bottom: 20px;
 }
 
-.tag-hint {
-  font-size: 12px;
-  color: #909399;
+.tag-input-area {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
 }
 </style>

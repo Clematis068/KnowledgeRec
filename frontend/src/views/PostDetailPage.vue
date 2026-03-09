@@ -68,7 +68,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { Star, StarFilled, Collection, CollectionTag } from '@element-plus/icons-vue'
+import { View, Star, StarFilled, Collection, CollectionTag } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getPostDetail, recordBehavior, unlikePost, unfavoritePost, getPostUserStatus } from '../api/post'
 import { useAuthStore } from '../stores/auth'

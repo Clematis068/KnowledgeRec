@@ -8,7 +8,9 @@
         <AppSidebar />
       </el-aside>
       <el-main class="app-main">
-        <router-view />
+        <router-view v-slot="{ Component, route }">
+          <component :is="Component" :key="route.fullPath" />
+        </router-view>
       </el-main>
     </el-container>
   </el-container>

@@ -20,7 +20,6 @@ frontend/dist/
 *.swp
 *.swo
 .DS_Store
-
-# Claude Code
 .claude/
 backend/.vite/
+.agents/
