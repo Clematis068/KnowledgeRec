@@ -3,58 +3,373 @@
     <el-page-header @back="$router.back()" :title="'返回'" style="margin-bottom: 20px" />
 
     <template v-if="user">
+      <!-- 个人信息卡片 -->
       <el-card class="profile-card">
         <div class="profile">
           <el-avatar :size="64" class="avatar">
             {{ user.username?.charAt(0)?.toUpperCase() }}
           </el-avatar>
           <div class="profile-info">
-            <h2>{{ user.username }}</h2>
-            <p class="email">{{ user.email }}</p>
+            <div class="profile-top">
+              <h2>{{ user.username }}</h2>
+              <el-button
+                v-if="!isOwnProfile && authStore.isLoggedIn"
+                :type="isFollowing ? 'default' : 'primary'"
+                size="small"
+                :loading="followLoading"
+                @click="toggleFollow"
+              >
+                {{ isFollowing ? '已关注' : '关注' }}
+              </el-button>
+              <el-button
+                v-if="isOwnProfile"
+                size="small"
+                @click="editDialogVisible = true"
+              >
+                编辑资料
+              </el-button>
+            </div>
             <p class="bio">{{ user.bio || '暂无简介' }}</p>
-            <el-tag v-if="user.interest_profile" type="success" size="small">
-              兴趣: {{ user.interest_profile }}
-            </el-tag>
-            <p class="time">注册时间: {{ user.created_at }}</p>
+            <div v-if="user.interest_tags && user.interest_tags.length" class="interest-tags">
+              <el-tag
+                v-for="tag in user.interest_tags"
+                :key="tag.id"
+                size="small"
+                type="info"
+                class="interest-tag"
+              >
+                {{ tag.name }}
+              </el-tag>
+            </div>
+            <div class="stats">
+              <span class="stat-item">
+                <strong>{{ userPostsTotal }}</strong> 帖子
+              </span>
+              <span class="stat-divider">|</span>
+              <span class="stat-item clickable" @click="activeTab = 'following'">
+                <strong>{{ followingCount }}</strong> 关注
+              </span>
+              <span class="stat-divider">|</span>
+              <span class="stat-item clickable" @click="activeTab = 'followers'">
+                <strong>{{ followersCount }}</strong> 粉丝
+              </span>
+            </div>
           </div>
         </div>
       </el-card>
 
+      <!-- Tab 内容区 -->
       <el-card style="margin-top: 16px">
-        <template #header>
-          <span style="font-weight: 600">行为历史</span>
-        </template>
-        <BehaviorTimeline :behaviors="behaviors" />
+        <el-tabs v-model="activeTab" @tab-change="onTabChange">
+          <el-tab-pane label="帖子" name="posts">
+            <div v-loading="tabLoading">
+              <PostCard v-for="p in userPosts" :key="p.id" :post="p" />
+              <el-empty v-if="!tabLoading && userPosts.length === 0" description="暂无帖子" />
+            </div>
+            <div v-if="userPostsTotal > pageSize" class="tab-pagination">
+              <el-pagination
+                v-model:current-page="postsPage"
+                :page-size="pageSize"
+                :total="userPostsTotal"
+                layout="prev, pager, next"
+                @current-change="fetchUserPosts"
+              />
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="收藏" name="favorites">
+            <div v-loading="tabLoading">
+              <PostCard v-for="p in userFavorites" :key="p.id" :post="p" />
+              <el-empty v-if="!tabLoading && userFavorites.length === 0" description="暂无收藏" />
+            </div>
+            <div v-if="favoritesTotal > pageSize" class="tab-pagination">
+              <el-pagination
+                v-model:current-page="favoritesPage"
+                :page-size="pageSize"
+                :total="favoritesTotal"
+                layout="prev, pager, next"
+                @current-change="fetchUserFavorites"
+              />
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="关注" name="following">
+            <div v-loading="tabLoading">
+              <div v-for="u in followingList" :key="u.id" class="user-item" @click="$router.push(`/users/${u.id}`)">
+                <el-avatar :size="36" class="user-item-avatar">
+                  {{ u.username?.charAt(0)?.toUpperCase() }}
+                </el-avatar>
+                <div>
+                  <div class="user-item-name">{{ u.username }}</div>
+                  <div class="user-item-bio">{{ u.bio || '暂无简介' }}</div>
+                </div>
+              </div>
+              <el-empty v-if="!tabLoading && followingList.length === 0" description="暂无关注" />
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="粉丝" name="followers">
+            <div v-loading="tabLoading">
+              <div v-for="u in followersList" :key="u.id" class="user-item" @click="$router.push(`/users/${u.id}`)">
+                <el-avatar :size="36" class="user-item-avatar">
+                  {{ u.username?.charAt(0)?.toUpperCase() }}
+                </el-avatar>
+                <div>
+                  <div class="user-item-name">{{ u.username }}</div>
+                  <div class="user-item-bio">{{ u.bio || '暂无简介' }}</div>
+                </div>
+              </div>
+              <el-empty v-if="!tabLoading && followersList.length === 0" description="暂无粉丝" />
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </el-card>
     </template>
 
     <el-empty v-else-if="!loading" description="用户不存在" />
+
+    <!-- 编辑资料弹窗 -->
+    <el-dialog v-model="editDialogVisible" title="编辑资料" width="480px">
+      <el-form label-position="top">
+        <el-form-item label="简介">
+          <el-input v-model="editForm.bio" type="textarea" :rows="3" maxlength="200" show-word-limit />
+        </el-form-item>
+        <el-form-item label="性别">
+          <el-select v-model="editForm.gender" style="width: 100%">
+            <el-option label="男" value="male" />
+            <el-option label="女" value="female" />
+            <el-option label="其他" value="other" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="邮箱">
+          <el-input v-model="editForm.email" />
+        </el-form-item>
+        <el-form-item label="兴趣标签">
+          <el-checkbox-group v-model="editForm.tag_ids">
+            <el-checkbox v-for="tag in allTags" :key="tag.id" :label="tag.id">
+              {{ tag.name }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editLoading" @click="handleSaveProfile">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { getUserDetail, getUserBehaviors } from '../api/user'
-import BehaviorTimeline from '../components/user/BehaviorTimeline.vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import {
+  getUserDetail, getUserPosts, getUserFavorites,
+  followUser, unfollowUser, getFollowers, getFollowing,
+  getFollowStatus, updateProfile,
+} from '../api/user'
+import { getTags } from '../api/auth'
+import { useAuthStore } from '../stores/auth'
+import PostCard from '../components/post/PostCard.vue'
 
 const route = useRoute()
-const user = ref(null)
-const behaviors = ref([])
-const loading = ref(false)
+const router = useRouter()
+const authStore = useAuthStore()
 
-onMounted(async () => {
+const user = ref(null)
+const loading = ref(false)
+const activeTab = ref('posts')
+const tabLoading = ref(false)
+const pageSize = 20
+
+// 关注状态
+const isFollowing = ref(false)
+const followLoading = ref(false)
+const followingCount = ref(0)
+const followersCount = ref(0)
+
+// 帖子 tab
+const userPosts = ref([])
+const postsPage = ref(1)
+const userPostsTotal = ref(0)
+
+// 收藏 tab
+const userFavorites = ref([])
+const favoritesPage = ref(1)
+const favoritesTotal = ref(0)
+
+// 关注/粉丝 tab
+const followingList = ref([])
+const followersList = ref([])
+
+// 编辑资料
+const editDialogVisible = ref(false)
+const editLoading = ref(false)
+const editForm = ref({ bio: '', gender: '', email: '', tag_ids: [] })
+const allTags = ref([])
+
+// 已加载的 tab 集合（用于懒加载）
+const loadedTabs = ref(new Set())
+
+const userId = computed(() => Number(route.params.id))
+const isOwnProfile = computed(() => authStore.userId === userId.value)
+
+async function fetchProfile() {
   loading.value = true
-  const userId = route.params.id
   try {
-    const [u, b] = await Promise.all([
-      getUserDetail(userId),
-      getUserBehaviors(userId),
+    const [u, followersData, followingData] = await Promise.all([
+      getUserDetail(userId.value),
+      getFollowers(userId.value),
+      getFollowing(userId.value),
     ])
     user.value = u
-    behaviors.value = b.behaviors || []
+    followersCount.value = followersData.count
+    followingCount.value = followingData.count
+
+    // 获取关注状态
+    if (authStore.isLoggedIn && !isOwnProfile.value) {
+      const status = await getFollowStatus(userId.value)
+      isFollowing.value = status.is_following
+    }
+
+    // 加载默认 tab
+    loadedTabs.value.clear()
+    await fetchUserPosts()
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchUserPosts() {
+  tabLoading.value = true
+  try {
+    const data = await getUserPosts(userId.value, postsPage.value, pageSize)
+    userPosts.value = data.posts
+    userPostsTotal.value = data.total
+    loadedTabs.value.add('posts')
+  } finally {
+    tabLoading.value = false
+  }
+}
+
+async function fetchUserFavorites() {
+  tabLoading.value = true
+  try {
+    const data = await getUserFavorites(userId.value, favoritesPage.value, pageSize)
+    userFavorites.value = data.posts
+    favoritesTotal.value = data.total
+    loadedTabs.value.add('favorites')
+  } finally {
+    tabLoading.value = false
+  }
+}
+
+async function fetchFollowingList() {
+  tabLoading.value = true
+  try {
+    const data = await getFollowing(userId.value)
+    followingList.value = data.following
+    loadedTabs.value.add('following')
+  } finally {
+    tabLoading.value = false
+  }
+}
+
+async function fetchFollowersList() {
+  tabLoading.value = true
+  try {
+    const data = await getFollowers(userId.value)
+    followersList.value = data.followers
+    loadedTabs.value.add('followers')
+  } finally {
+    tabLoading.value = false
+  }
+}
+
+function onTabChange(tab) {
+  if (loadedTabs.value.has(tab)) return
+  const fetchMap = {
+    posts: fetchUserPosts,
+    favorites: fetchUserFavorites,
+    following: fetchFollowingList,
+    followers: fetchFollowersList,
+  }
+  fetchMap[tab]?.()
+}
+
+async function toggleFollow() {
+  followLoading.value = true
+  try {
+    if (isFollowing.value) {
+      await unfollowUser(userId.value)
+      isFollowing.value = false
+      followersCount.value = Math.max(followersCount.value - 1, 0)
+      ElMessage.success('已取消关注')
+    } else {
+      await followUser(userId.value)
+      isFollowing.value = true
+      followersCount.value += 1
+      ElMessage.success('关注成功')
+    }
+  } finally {
+    followLoading.value = false
+  }
+}
+
+async function handleSaveProfile() {
+  editLoading.value = true
+  try {
+    const updated = await updateProfile(editForm.value)
+    user.value = updated
+    editDialogVisible.value = false
+    ElMessage.success('资料已更新')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+// 监听路由变化（用户主页间跳转）
+watch(
+  () => route.params.id,
+  () => {
+    if (route.name === 'UserDetail') {
+      activeTab.value = 'posts'
+      fetchProfile()
+    }
+  }
+)
+
+onMounted(async () => {
+  fetchProfile()
+  // 加载所有标签（编辑用）
+  try {
+    const data = await getTags()
+    allTags.value = data.tags || data
+  } catch {
+    // ignore
+  }
+
+  // 初始化编辑表单
+  if (isOwnProfile.value && user.value) {
+    editForm.value = {
+      bio: user.value.bio || '',
+      gender: user.value.gender || '',
+      email: user.value.email || '',
+      tag_ids: (user.value.interest_tags || []).map(t => t.id),
+    }
+  }
+})
+
+// 打开编辑弹窗时同步数据
+watch(editDialogVisible, (visible) => {
+  if (visible && user.value) {
+    editForm.value = {
+      bio: user.value.bio || '',
+      gender: user.value.gender || '',
+      email: user.value.email || '',
+      tag_ids: (user.value.interest_tags || []).map(t => t.id),
+    }
   }
 })
 </script>
@@ -78,15 +393,20 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-.profile-info h2 {
-  font-size: 20px;
-  margin-bottom: 4px;
+.profile-info {
+  flex: 1;
 }
 
-.email {
-  font-size: 13px;
-  color: #909399;
-  margin-bottom: 6px;
+.profile-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.profile-top h2 {
+  font-size: 20px;
+  margin: 0;
 }
 
 .bio {
@@ -95,9 +415,78 @@ onMounted(async () => {
   margin-bottom: 8px;
 }
 
-.time {
+.interest-tags {
+  margin-bottom: 10px;
+}
+
+.interest-tag {
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+
+.stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #606266;
+}
+
+.stat-item strong {
+  color: #303133;
+}
+
+.stat-item.clickable {
+  cursor: pointer;
+}
+
+.stat-item.clickable:hover {
+  color: #409eff;
+}
+
+.stat-divider {
+  color: #dcdfe6;
+}
+
+.tab-pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+}
+
+.user-item:last-child {
+  border-bottom: none;
+}
+
+.user-item:hover .user-item-name {
+  color: #409eff;
+}
+
+.user-item-avatar {
+  background: #409eff;
+  color: #fff;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.user-item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.user-item-bio {
   font-size: 12px;
-  color: #c0c4cc;
-  margin-top: 8px;
+  color: #909399;
+  margin-top: 2px;
 }
 </style>

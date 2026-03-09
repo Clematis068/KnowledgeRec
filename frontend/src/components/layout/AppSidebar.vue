@@ -8,13 +8,17 @@
       <el-icon><Star /></el-icon>
       <span>智能推荐</span>
     </el-menu-item>
+    <el-menu-item index="/hot">
+      <el-icon><TrendCharts /></el-icon>
+      <span>热门</span>
+    </el-menu-item>
     <el-menu-item index="/posts">
       <el-icon><Document /></el-icon>
-      <span>帖子列表</span>
+      <span>帖子广场</span>
     </el-menu-item>
-    <el-menu-item index="/users">
-      <el-icon><User /></el-icon>
-      <span>用户列表</span>
+    <el-menu-item index="/create-post">
+      <el-icon><EditPen /></el-icon>
+      <span>发帖</span>
     </el-menu-item>
   </el-menu>
 </template>
@@ -28,8 +32,9 @@ const route = useRoute()
 const activeMenu = computed(() => {
   const path = route.path
   if (path.startsWith('/recommend')) return '/recommend'
+  if (path.startsWith('/hot')) return '/hot'
   if (path.startsWith('/posts')) return '/posts'
-  if (path.startsWith('/users')) return '/users'
+  if (path.startsWith('/create-post')) return '/create-post'
   return path
 })
 </script>

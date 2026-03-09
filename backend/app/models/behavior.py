@@ -19,7 +19,18 @@ class UserBehavior(db.Model):
             'user_id': self.user_id,
             'post_id': self.post_id,
             'behavior_type': self.behavior_type,
+            'comment_text': self.comment_text,
             'duration': self.duration,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def to_comment_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'username': self.user.username if self.user else None,
+            'post_id': self.post_id,
+            'comment_text': self.comment_text,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 

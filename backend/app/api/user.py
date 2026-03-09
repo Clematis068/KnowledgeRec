@@ -1,9 +1,10 @@
 from flask import Blueprint, request, jsonify, g
 from app import db
 from app.models.user import User
+from app.models.post import Post
 from app.models.tag import Tag
 from app.models.behavior import UserBehavior, UserFollow
-from app.utils.auth import login_required
+from app.utils.auth import login_required, optional_login
 
 user_bp = Blueprint('user', __name__)
 
@@ -146,3 +147,50 @@ def get_following(user_id):
         "following": [u.to_dict() for u in users],
         "count": len(users),
     })
+
+
+@user_bp.route('/<int:user_id>/posts', methods=['GET'])
+def get_user_posts(user_id):
+    """获取用户发布的帖子"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    query = Post.query.filter_by(author_id=user_id).order_by(Post.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page)
+    return jsonify({
+        "posts": [p.to_dict() for p in pagination.items],
+        "total": pagination.total,
+    })
+
+
+@user_bp.route('/<int:user_id>/favorites', methods=['GET'])
+def get_user_favorites(user_id):
+    """获取用户收藏的帖子"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+
+    fav_behaviors = (UserBehavior.query
+        .filter_by(user_id=user_id, behavior_type='favorite')
+        .order_by(UserBehavior.created_at.desc())
+        .paginate(page=page, per_page=per_page))
+
+    post_ids = [b.post_id for b in fav_behaviors.items]
+    posts = Post.query.filter(Post.id.in_(post_ids)).all() if post_ids else []
+    post_map = {p.id: p for p in posts}
+    ordered = [post_map[pid] for pid in post_ids if pid in post_map]
+
+    return jsonify({
+        "posts": [p.to_dict() for p in ordered],
+        "total": fav_behaviors.total,
+    })
+
+
+@user_bp.route('/<int:user_id>/follow_status', methods=['GET'])
+@optional_login
+def get_follow_status(user_id):
+    """当前用户是否关注了目标用户"""
+    if not g.current_user:
+        return jsonify({"is_following": False})
+    exists = UserFollow.query.filter_by(
+        follower_id=g.current_user.id, followed_id=user_id
+    ).first()
+    return jsonify({"is_following": exists is not None})

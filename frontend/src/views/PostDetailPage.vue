@@ -9,7 +9,9 @@
             <h2>{{ post.title }}</h2>
             <div class="meta">
               <el-tag size="small">领域 {{ post.domain_id }}</el-tag>
-              <span>作者 ID: {{ post.author_id }}</span>
+              <router-link :to="`/users/${post.author_id}`" class="author-link">
+                作者 ID: {{ post.author_id }}
+              </router-link>
               <span><el-icon><View /></el-icon> {{ post.view_count }}</span>
               <span><el-icon><Star /></el-icon> {{ post.like_count }}</span>
               <span>{{ post.created_at }}</span>
@@ -50,6 +52,13 @@
           <div class="content-body">{{ post.content }}</div>
         </div>
       </el-card>
+
+      <el-card style="margin-top: 16px">
+        <template #header>
+          <span style="font-weight: 600">评论区</span>
+        </template>
+        <CommentSection :post-id="route.params.id" />
+      </el-card>
     </template>
 
     <el-empty v-else-if="!loading" description="帖子不存在" />
@@ -61,8 +70,9 @@ import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Star, StarFilled, Collection, CollectionTag } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getPostDetail, recordBehavior, unlikePost, getPostUserStatus } from '../api/post'
+import { getPostDetail, recordBehavior, unlikePost, unfavoritePost, getPostUserStatus } from '../api/post'
 import { useAuthStore } from '../stores/auth'
+import CommentSection from '../components/post/CommentSection.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -111,8 +121,9 @@ async function toggleLike() {
 async function toggleFavorite() {
   try {
     if (favorited.value) {
-      // 后端暂无取消收藏接口，仅切换前端状态提示
-      ElMessage.info('暂不支持取消收藏')
+      await unfavoritePost(route.params.id)
+      favorited.value = false
+      ElMessage.success('已取消收藏')
     } else {
       await recordBehavior(route.params.id, 'favorite')
       favorited.value = true
@@ -147,6 +158,15 @@ async function toggleFavorite() {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.author-link {
+  color: #909399;
+  text-decoration: none;
+}
+
+.author-link:hover {
+  color: #409eff;
 }
 
 .tags-area {

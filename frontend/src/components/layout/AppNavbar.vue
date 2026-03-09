@@ -6,6 +6,18 @@
       <span class="subtitle">知识社区推荐系统</span>
     </div>
 
+    <div class="navbar-search">
+      <el-input
+        v-model="searchQuery"
+        placeholder="搜索知识帖子..."
+        :prefix-icon="Search"
+        clearable
+        size="default"
+        style="width: 300px"
+        @keyup.enter="handleSearch"
+      />
+    </div>
+
     <div class="navbar-right">
       <template v-if="authStore.isLoggedIn">
         <el-dropdown @command="handleCommand">
@@ -38,12 +50,20 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { UserFilled } from '@element-plus/icons-vue'
+import { UserFilled, Search } from '@element-plus/icons-vue'
 import { useAuthStore } from '../../stores/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const searchQuery = ref('')
+
+function handleSearch() {
+  if (searchQuery.value.trim()) {
+    router.push({ path: '/search', query: { q: searchQuery.value.trim() } })
+  }
+}
 
 function handleCommand(cmd) {
   if (cmd === 'recommend') {
@@ -84,6 +104,12 @@ function handleCommand(cmd) {
   font-size: 13px;
   color: #909399;
   margin-left: 4px;
+}
+
+.navbar-search {
+  flex: 1;
+  display: flex;
+  justify-content: center;
 }
 
 .navbar-right {

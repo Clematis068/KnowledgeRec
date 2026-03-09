@@ -7,6 +7,77 @@ from app.utils.auth import login_required, optional_login
 post_bp = Blueprint('post', __name__)
 
 
+@post_bp.route('/create', methods=['POST'])
+@login_required
+def create_post():
+    """创建帖子"""
+    data = request.get_json() or {}
+    title = data.get('title', '').strip()
+    content = data.get('content', '').strip()
+    domain_id = data.get('domain_id')
+    tag_ids = data.get('tag_ids', [])
+
+    if not title or not content or not domain_id:
+        return jsonify({"error": "标题、正文和领域不能为空"}), 400
+
+    post = Post(
+        title=title,
+        content=content,
+        author_id=g.current_user.id,
+        domain_id=domain_id,
+    )
+
+    # 绑定标签
+    if tag_ids:
+        from app.models.tag import Tag
+        tags = Tag.query.filter(Tag.id.in_(tag_ids)).all()
+        post.tags = tags
+
+    # LLM 自动生成摘要
+    try:
+        from app.services.qwen_service import qwen_service
+        summary = qwen_service.chat(
+            content[:2000],
+            system_prompt="请用一句话总结以下内容，不超过100字："
+        )
+        post.summary = summary[:500]
+    except Exception:
+        post.summary = content[:200]
+
+    # 生成 Embedding
+    try:
+        from app.services.qwen_service import qwen_service
+        post.content_embedding = qwen_service.get_embedding(title + " " + content[:500])
+    except Exception:
+        pass
+
+    db.session.add(post)
+    db.session.commit()
+
+    # 同步 Neo4j
+    try:
+        from app.services.neo4j_service import neo4j_service
+        neo4j_service.run_write(
+            "MERGE (p:Post {id: $pid}) SET p.title = $title, p.domain_id = $did "
+            "WITH p "
+            "MERGE (u:User {id: $uid}) "
+            "MERGE (u)-[:AUTHORED]->(p)",
+            {'pid': post.id, 'title': title, 'did': domain_id, 'uid': g.current_user.id}
+        )
+        if tag_ids:
+            neo4j_service.run_write(
+                "MATCH (p:Post {id: $pid}) "
+                "UNWIND $tids AS tid "
+                "MATCH (t:Tag {id: tid}) "
+                "MERGE (p)-[:HAS_TAG]->(t)",
+                {'pid': post.id, 'tids': tag_ids}
+            )
+    except Exception:
+        pass
+
+    return jsonify(post.to_dict()), 201
+
+
 @post_bp.route('/<int:post_id>', methods=['GET'])
 def get_post(post_id):
     """获取帖子详情"""
@@ -154,3 +225,55 @@ def get_post_user_status(post_id):
     ).first() is not None
 
     return jsonify({"liked": liked, "favorited": favorited})
+
+
+@post_bp.route('/<int:post_id>/comments', methods=['GET'])
+def get_comments(post_id):
+    """获取帖子评论列表"""
+    post = db.session.get(Post, post_id)
+    if not post:
+        return jsonify({"error": "帖子不存在"}), 404
+
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+
+    query = UserBehavior.query.filter_by(
+        post_id=post_id, behavior_type='comment'
+    ).order_by(UserBehavior.created_at.desc())
+
+    pagination = query.paginate(page=page, per_page=per_page)
+    return jsonify({
+        "comments": [b.to_comment_dict() for b in pagination.items],
+        "total": pagination.total,
+    })
+
+
+@post_bp.route('/<int:post_id>/favorite', methods=['DELETE'])
+@login_required
+def unfavorite_post(post_id):
+    """取消收藏"""
+    post = db.session.get(Post, post_id)
+    if not post:
+        return jsonify({"error": "帖子不存在"}), 404
+
+    user_id = g.current_user.id
+    behavior = UserBehavior.query.filter_by(
+        user_id=user_id, post_id=post_id, behavior_type='favorite'
+    ).first()
+
+    if not behavior:
+        return jsonify({"error": "未收藏过"}), 404
+
+    db.session.delete(behavior)
+    db.session.commit()
+
+    try:
+        from app.services.neo4j_service import neo4j_service
+        neo4j_service.run_write(
+            "MATCH (u:User {id: $user_id})-[r:FAVORITED]->(p:Post {id: $post_id}) DELETE r",
+            {'user_id': user_id, 'post_id': post_id}
+        )
+    except Exception:
+        pass
+
+    return jsonify({"message": "已取消收藏"})

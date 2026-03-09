@@ -25,6 +25,11 @@ const routes = [
         meta: { requiresAuth: true },
       },
       {
+        path: 'hot',
+        name: 'Hot',
+        component: () => import('../views/HotPage.vue'),
+      },
+      {
         path: 'posts',
         name: 'PostList',
         component: () => import('../views/PostListPage.vue'),
@@ -33,6 +38,17 @@ const routes = [
         path: 'posts/:id',
         name: 'PostDetail',
         component: () => import('../views/PostDetailPage.vue'),
+      },
+      {
+        path: 'create-post',
+        name: 'CreatePost',
+        component: () => import('../views/CreatePostPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
+        path: 'search',
+        name: 'Search',
+        component: () => import('../views/SearchPage.vue'),
       },
       {
         path: 'users',
