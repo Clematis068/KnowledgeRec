@@ -1,11 +1,16 @@
 <template>
   <div class="comment-section">
     <div v-if="authStore.isLoggedIn" class="comment-input">
+      <div v-if="replyTo" class="reply-hint">
+        回复 @{{ replyTo.username }}
+        <el-button text size="small" @click="cancelReply">取消</el-button>
+      </div>
       <el-input
+        ref="commentInputRef"
         v-model="commentText"
         type="textarea"
         :rows="3"
-        placeholder="写下你的评论..."
+        :placeholder="replyTo ? `回复 @${replyTo.username}...` : '写下你的评论...'"
         maxlength="500"
         show-word-limit
       />
@@ -16,7 +21,7 @@
         style="margin-top: 8px"
         @click="handleSubmit"
       >
-        发表评论
+        {{ replyTo ? '回复' : '发表评论' }}
       </el-button>
     </div>
     <div v-else class="login-tip">
@@ -35,7 +40,19 @@
             </router-link>
             <span class="comment-time">{{ c.created_at }}</span>
           </div>
-          <div class="comment-text">{{ c.comment_text }}</div>
+          <div class="comment-text">
+            <span v-if="c.reply_to_username" class="reply-tag">回复 @{{ c.reply_to_username }}：</span>
+            {{ c.comment_text }}
+          </div>
+          <el-button
+            v-if="authStore.isLoggedIn"
+            text
+            size="small"
+            class="reply-btn"
+            @click="handleReply(c)"
+          >
+            回复
+          </el-button>
         </div>
       </div>
       <el-empty v-if="!loading && comments.length === 0" description="暂无评论" />
@@ -54,7 +71,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getComments, postComment } from '../../api/post'
 import { useAuthStore } from '../../stores/auth'
@@ -71,6 +88,8 @@ const submitting = ref(false)
 const page = ref(1)
 const pageSize = 20
 const total = ref(0)
+const replyTo = ref(null)
+const commentInputRef = ref(null)
 
 async function fetchComments() {
   loading.value = true
@@ -83,12 +102,25 @@ async function fetchComments() {
   }
 }
 
+function handleReply(comment) {
+  replyTo.value = comment
+  nextTick(() => {
+    commentInputRef.value?.focus()
+  })
+}
+
+function cancelReply() {
+  replyTo.value = null
+}
+
 async function handleSubmit() {
   if (!commentText.value.trim()) return
   submitting.value = true
   try {
-    await postComment(props.postId, commentText.value.trim())
+    const parentId = replyTo.value ? replyTo.value.id : null
+    await postComment(props.postId, commentText.value.trim(), parentId)
     commentText.value = ''
+    replyTo.value = null
     page.value = 1
     await fetchComments()
     ElMessage.success('评论成功')
@@ -103,6 +135,15 @@ onMounted(fetchComments)
 <style scoped>
 .comment-input {
   margin-bottom: 20px;
+}
+
+.reply-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #409eff;
 }
 
 .login-tip {
@@ -166,6 +207,21 @@ onMounted(fetchComments)
   line-height: 1.6;
   color: #606266;
   word-break: break-word;
+}
+
+.reply-tag {
+  color: #409eff;
+  font-size: 13px;
+}
+
+.reply-btn {
+  margin-top: 4px;
+  color: #909399;
+  padding: 0;
+}
+
+.reply-btn:hover {
+  color: #409eff;
 }
 
 .comment-pagination {

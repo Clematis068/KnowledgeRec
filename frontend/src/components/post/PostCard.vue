@@ -2,7 +2,7 @@
   <el-card shadow="hover" class="post-card" @click="$router.push(`/posts/${post.id}`)">
     <div class="post-header">
       <span class="title">{{ post.title }}</span>
-      <el-tag v-if="post.domain_id" size="small">领域 {{ post.domain_id }}</el-tag>
+      <el-tag v-if="post.domain_name" size="small">{{ post.domain_name }}</el-tag>
     </div>
     <p class="summary">{{ post.summary || '暂无摘要' }}</p>
     <div class="post-meta">

@@ -8,9 +8,9 @@
           <div class="detail-header">
             <h2>{{ post.title }}</h2>
             <div class="meta">
-              <el-tag size="small">领域 {{ post.domain_id }}</el-tag>
+              <el-tag size="small">{{ post.domain_name }}</el-tag>
               <router-link :to="`/users/${post.author_id}`" class="author-link">
-                作者 ID: {{ post.author_id }}
+                {{ post.author_name || '匿名' }}
               </router-link>
               <span><el-icon><View /></el-icon> {{ post.view_count }}</span>
               <span><el-icon><Star /></el-icon> {{ post.like_count }}</span>

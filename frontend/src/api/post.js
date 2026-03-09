@@ -38,8 +38,10 @@ export function getComments(postId, page = 1, perPage = 20) {
 }
 
 /** 发表评论 */
-export function postComment(postId, commentText) {
-  return request.post(`/post/${postId}/behavior`, { behavior_type: 'comment', comment_text: commentText })
+export function postComment(postId, commentText, parentId = null) {
+  const data = { behavior_type: 'comment', comment_text: commentText }
+  if (parentId) data.parent_id = parentId
+  return request.post(`/post/${postId}/behavior`, data)
 }
 
 /** 取消收藏 */
@@ -52,7 +54,7 @@ export function createPost({ title, content, domain_id, tag_ids }) {
   return request.post('/post/create', { title, content, domain_id, tag_ids })
 }
 
-/** 搜索帖子 */
-export function searchPosts(q, page = 1, perPage = 20) {
-  return request.get('/search', { params: { q, page, per_page: perPage } })
+/** 搜索帖子或用户 */
+export function searchPosts(q, page = 1, perPage = 20, type = 'post') {
+  return request.get('/search', { params: { q, page, per_page: perPage, type } })
 }

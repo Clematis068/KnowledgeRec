@@ -143,6 +143,7 @@ def record_behavior(post_id):
         post_id=post_id,
         behavior_type=behavior_type,
         comment_text=data.get('comment_text') if behavior_type == 'comment' else None,
+        parent_id=data.get('parent_id') if behavior_type == 'comment' else None,
         duration=data.get('duration') if behavior_type == 'browse' else None,
     )
     db.session.add(behavior)

@@ -9,13 +9,20 @@
     <div class="navbar-search">
       <el-input
         v-model="searchQuery"
-        placeholder="搜索知识帖子..."
+        placeholder="搜索..."
         :prefix-icon="Search"
         clearable
         size="default"
-        style="width: 300px"
+        style="width: 340px"
         @keyup.enter="handleSearch"
-      />
+      >
+        <template #prepend>
+          <el-select v-model="searchType" style="width: 100px" size="default">
+            <el-option label="搜帖子" value="post" />
+            <el-option label="搜作者" value="author" />
+          </el-select>
+        </template>
+      </el-input>
     </div>
 
     <div class="navbar-right">
@@ -58,10 +65,11 @@ import { useAuthStore } from '../../stores/auth'
 const router = useRouter()
 const authStore = useAuthStore()
 const searchQuery = ref('')
+const searchType = ref('post')
 
 function handleSearch() {
   if (searchQuery.value.trim()) {
-    router.push({ path: '/search', query: { q: searchQuery.value.trim() } })
+    router.push({ path: '/search', query: { q: searchQuery.value.trim(), type: searchType.value } })
   }
 }
 
