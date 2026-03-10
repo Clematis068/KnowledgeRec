@@ -17,6 +17,7 @@ import numpy as np
 
 from app import create_app, db
 from app.models import User, Post, Tag, Domain, UserBehavior, UserFollow, post_tag
+from app.taxonomy import FIXED_DOMAINS
 
 fake = Faker('zh_CN')
 
@@ -24,26 +25,8 @@ fake = Faker('zh_CN')
 # 领域与标签定义
 # ============================================================
 DOMAINS_AND_TAGS = {
-    "计算机科学": ["机器学习", "深度学习", "自然语言处理", "计算机视觉", "数据库",
-                  "操作系统", "算法设计", "分布式系统", "网络安全", "编程语言"],
-    "数学": ["线性代数", "概率论", "数论", "微积分", "统计学",
-            "组合数学", "最优化", "图论", "离散数学", "数学建模"],
-    "物理学": ["量子力学", "电磁学", "热力学", "光学", "相对论",
-              "粒子物理", "固体物理", "流体力学", "天体物理", "核物理"],
-    "哲学": ["逻辑学", "伦理学", "认识论", "形而上学", "美学",
-            "政治哲学", "科学哲学", "语言哲学", "存在主义", "现象学"],
-    "经济学": ["微观经济", "宏观经济", "计量经济", "行为经济", "金融学",
-              "博弈论", "国际贸易", "货币政策", "产业经济", "发展经济"],
-    "生物学": ["分子生物", "遗传学", "生态学", "细胞生物", "神经科学",
-              "微生物学", "进化论", "免疫学", "生物信息", "基因工程"],
-    "心理学": ["认知心理", "发展心理", "社会心理", "临床心理", "教育心理",
-              "人格心理", "实验心理", "神经心理", "心理咨询", "积极心理"],
-    "历史学": ["中国古代史", "中国近代史", "世界史", "文化史", "经济史",
-              "军事史", "思想史", "社会史", "考古学", "历史方法论"],
-    "文学": ["中国古典文学", "现当代文学", "外国文学", "文学理论", "诗歌",
-            "小说创作", "散文", "戏剧", "比较文学", "文学批评"],
-    "法学": ["宪法学", "民法", "刑法", "行政法", "国际法",
-            "知识产权", "经济法", "劳动法", "环境法", "法理学"],
+    item["name"]: item["keywords"]
+    for item in FIXED_DOMAINS
 }
 
 # 帖子标题模板
@@ -108,7 +91,11 @@ def generate_domains_and_tags():
     """生成领域和标签"""
     print("生成领域和标签...")
     for domain_name, tag_names in DOMAINS_AND_TAGS.items():
-        domain = Domain(name=domain_name, description=f"{domain_name}相关的知识内容")
+        description = next(
+            (item["description"] for item in FIXED_DOMAINS if item["name"] == domain_name),
+            f"{domain_name}相关的知识内容",
+        )
+        domain = Domain(name=domain_name, description=description)
         db.session.add(domain)
         db.session.flush()  # get domain.id
 

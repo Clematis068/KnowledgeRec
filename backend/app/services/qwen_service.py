@@ -1,4 +1,7 @@
 from openai import OpenAI
+import json
+import re
+
 from ..config import Config
 
 
@@ -41,6 +44,17 @@ class QwenService:
         )
         return response.data[0].embedding
 
+    def chat_json(self, message: str, system_prompt: str = None) -> dict:
+        """单轮对话并提取 JSON 对象"""
+        content = self.chat(message, system_prompt=system_prompt).strip()
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", content, re.S)
+            if not match:
+                raise
+            return json.loads(match.group(0))
+
     def extract_tags(self, content: str) -> dict:
         """从内容中提取标签和摘要，用于知识图谱构建"""
         system_prompt = (
@@ -50,9 +64,7 @@ class QwenService:
             "3. domain: 所属知识领域\n"
             "请严格以JSON格式返回，不要输出其他内容。"
         )
-        import json
-        result = self.chat(content, system_prompt=system_prompt)
-        return json.loads(result)
+        return self.chat_json(content, system_prompt=system_prompt)
 
 
 # 全局单例

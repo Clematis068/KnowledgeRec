@@ -1,56 +1,18 @@
-<template>
-  <div class="post-list-page">
-    <div class="page-header">
-      <h2>帖子列表</h2>
-    </div>
-
-    <el-tabs v-model="activeDomain" @tab-change="onDomainChange">
-      <el-tab-pane label="全部" name="all" />
-      <el-tab-pane
-        v-for="d in domains"
-        :key="d.id"
-        :label="d.name"
-        :name="String(d.id)"
-      />
-    </el-tabs>
-
-    <div v-loading="loading">
-      <PostCard v-for="p in posts" :key="p.id" :post="p" />
-      <el-empty v-if="!loading && posts.length === 0" description="暂无帖子" />
-    </div>
-
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="page"
-        :page-size="pageSize"
-        :total="total"
-        layout="prev, pager, next, total"
-        @current-change="fetchPosts"
-      />
-    </div>
-  </div>
-</template>
-
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getPostList } from '../api/post'
-import PostCard from '../components/post/PostCard.vue'
+import { onMounted, ref } from 'vue'
 
-// 领域列表（与后端 seed 一致）
-const domains = ref([
-  { id: 1, name: '计算机科学' },
-  { id: 2, name: '数学' },
-  { id: 3, name: '物理学' },
-  { id: 4, name: '生物学' },
-  { id: 5, name: '经济学' },
-])
+import PostCard from '../components/post/PostCard.vue'
+import { getPostList } from '../api/post'
+import { useDomains } from '../composables/useDomains'
+
+const { domains, fetchDomains } = useDomains()
 
 const activeDomain = ref('all')
 const posts = ref([])
 const page = ref(1)
-const pageSize = 20
 const total = ref(0)
 const loading = ref(false)
+const pageSize = 20
 
 async function fetchPosts() {
   loading.value = true
@@ -69,8 +31,44 @@ function onDomainChange() {
   fetchPosts()
 }
 
-onMounted(fetchPosts)
+onMounted(() => {
+  fetchDomains()
+  fetchPosts()
+})
 </script>
+
+<template>
+  <div class="post-list-page">
+    <div class="page-header">
+      <h2>帖子列表</h2>
+    </div>
+
+    <el-tabs v-model="activeDomain" @tab-change="onDomainChange">
+      <el-tab-pane label="全部" name="all" />
+      <el-tab-pane
+        v-for="domain in domains"
+        :key="domain.id"
+        :label="domain.name"
+        :name="String(domain.id)"
+      />
+    </el-tabs>
+
+    <div v-loading="loading">
+      <PostCard v-for="post in posts" :key="post.id" :post="post" />
+      <el-empty v-if="!loading && posts.length === 0" description="暂无帖子" />
+    </div>
+
+    <div class="pagination">
+      <el-pagination
+        v-model:current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next, total"
+        @current-change="fetchPosts"
+      />
+    </div>
+  </div>
+</template>
 
 <style scoped>
 .post-list-page {

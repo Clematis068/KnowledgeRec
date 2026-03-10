@@ -34,5 +34,20 @@ class RedisService:
         """按分数降序获取 Top-N"""
         return self.client.zrevrange(key, 0, count - 1, withscores=True)
 
+    def set_value(self, key, value, ttl=None):
+        """存储字符串值"""
+        if ttl:
+            self.client.setex(key, ttl, value)
+        else:
+            self.client.set(key, value)
+
+    def get_value(self, key):
+        """读取字符串值"""
+        return self.client.get(key)
+
+    def delete(self, key):
+        """删除缓存键"""
+        self.client.delete(key)
+
 
 redis_service = RedisService()

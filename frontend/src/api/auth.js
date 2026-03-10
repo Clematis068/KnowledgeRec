@@ -4,8 +4,8 @@ export function login(username, password) {
   return request.post('/auth/login', { username, password })
 }
 
-export function register({ username, password, gender, tag_ids }) {
-  return request.post('/auth/register', { username, password, gender, tag_ids })
+export function register({ username, password, gender, email, tag_ids }) {
+  return request.post('/auth/register', { username, password, gender, email, tag_ids })
 }
 
 export function getMe() {
@@ -14,4 +14,16 @@ export function getMe() {
 
 export function getTags() {
   return request.get('/auth/tags')
+}
+
+export function getDomains() {
+  return request.get('/auth/domains')
+}
+
+export function sendEmailCode(email) {
+  return request.post('/auth/send-email-code', { email })
+}
+
+export function verifyEmailCode(email, code) {
+  return request.post('/auth/verify-email-code', { email, code })
 }

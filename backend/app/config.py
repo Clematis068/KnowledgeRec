@@ -28,6 +28,15 @@ class Config:
     DASHSCOPE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
     QWEN_MODEL = os.getenv('QWEN_MODEL', 'qwen-plus')
 
+    # 邮件验证码（未配置 SMTP 时自动降级为开发模式）
+    SMTP_HOST = os.getenv('SMTP_HOST', '')
+    SMTP_PORT = int(os.getenv('SMTP_PORT', '465'))
+    SMTP_USER = os.getenv('SMTP_USER', '')
+    SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+    SMTP_FROM = os.getenv('SMTP_FROM', SMTP_USER)
+    SMTP_USE_SSL = os.getenv('SMTP_USE_SSL', 'true').lower() == 'true'
+    SMTP_USE_TLS = os.getenv('SMTP_USE_TLS', 'false').lower() == 'true'
+
     # JWT
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
     JWT_EXPIRATION_HOURS = int(os.getenv('JWT_EXPIRATION_HOURS', '24'))

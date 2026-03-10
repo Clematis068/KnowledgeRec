@@ -10,6 +10,7 @@ from app.models.behavior import (
     UserBlockedAuthor,
     UserBlockedDomain,
 )
+from app.services.tag_taxonomy_service import tag_taxonomy_service
 from app.utils.auth import login_required, optional_login
 from app.utils.content_filter import apply_post_visibility_query, filter_posts
 
@@ -68,6 +69,8 @@ def update_profile():
         user.interest_tags = tags
 
     db.session.commit()
+    if 'tag_ids' in data:
+        tag_taxonomy_service.sync_user_interest_tags(user)
     return jsonify(user.to_dict())
 
 

@@ -1,91 +1,20 @@
-<template>
-  <div v-loading="loading" class="edit-post-page">
-    <el-page-header @back="$router.back()" :title="'返回'" style="margin-bottom: 20px" />
-    <h2 class="page-title">编辑帖子</h2>
-
-    <el-form
-      v-if="!loading"
-      ref="formRef"
-      :model="form"
-      :rules="rules"
-      label-position="top"
-    >
-      <el-form-item label="标题" prop="title">
-        <el-input v-model="form.title" placeholder="请输入帖子标题" maxlength="200" show-word-limit />
-      </el-form-item>
-
-      <el-form-item label="领域" prop="domain_id">
-        <el-select v-model="form.domain_id" placeholder="请选择领域" style="width: 100%">
-          <el-option v-for="d in domains" :key="d.id" :label="d.name" :value="d.id" />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="标签">
-        <div class="tag-input-area">
-          <el-tag
-            v-for="tag in form.tags"
-            :key="tag"
-            closable
-            style="margin-right: 6px; margin-bottom: 6px"
-            @close="removeTag(tag)"
-          >
-            {{ tag }}
-          </el-tag>
-          <el-input
-            v-if="tagInputVisible"
-            ref="tagInputRef"
-            v-model="tagInputValue"
-            size="small"
-            style="width: 120px"
-            placeholder="输入标签"
-            @keyup.enter="confirmTag"
-            @blur="confirmTag"
-          />
-          <el-button v-else size="small" @click="showTagInput">+ 添加标签</el-button>
-        </div>
-      </el-form-item>
-
-      <el-form-item label="正文" prop="content">
-        <el-input
-          v-model="form.content"
-          type="textarea"
-          :rows="12"
-          placeholder="请输入帖子正文"
-          maxlength="10000"
-          show-word-limit
-        />
-      </el-form-item>
-
-      <el-form-item>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">保存修改</el-button>
-      </el-form-item>
-    </el-form>
-  </div>
-</template>
-
 <script setup>
 import { nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+
 import { getPostDetail, updatePost } from '../api/post'
+import { useDomains } from '../composables/useDomains'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-
-const domains = [
-  { id: 1, name: '计算机科学' },
-  { id: 2, name: '数学' },
-  { id: 3, name: '物理学' },
-  { id: 4, name: '生物学' },
-  { id: 5, name: '经济学' },
-]
+const { domains, fetchDomains } = useDomains()
 
 const formRef = ref()
 const loading = ref(false)
 const submitting = ref(false)
-
 const tagInputVisible = ref(false)
 const tagInputValue = ref('')
 const tagInputRef = ref()
@@ -158,8 +87,76 @@ async function handleSubmit() {
   }
 }
 
-onMounted(fetchPost)
+onMounted(() => {
+  fetchDomains()
+  fetchPost()
+})
 </script>
+
+<template>
+  <div v-loading="loading" class="edit-post-page">
+    <el-page-header @back="$router.back()" :title="'返回'" style="margin-bottom: 20px" />
+    <h2 class="page-title">编辑帖子</h2>
+
+    <el-form
+      v-if="!loading"
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      label-position="top"
+    >
+      <el-form-item label="标题" prop="title">
+        <el-input v-model="form.title" placeholder="请输入标题" maxlength="200" show-word-limit />
+      </el-form-item>
+
+      <el-form-item label="领域" prop="domain_id">
+        <el-select v-model="form.domain_id" placeholder="请选择领域" style="width: 100%">
+          <el-option v-for="domain in domains" :key="domain.id" :label="domain.name" :value="domain.id" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="标签">
+        <div class="tag-input-area">
+          <el-tag
+            v-for="tag in form.tags"
+            :key="tag"
+            closable
+            style="margin-right: 6px; margin-bottom: 6px"
+            @close="removeTag(tag)"
+          >
+            {{ tag }}
+          </el-tag>
+          <el-input
+            v-if="tagInputVisible"
+            ref="tagInputRef"
+            v-model="tagInputValue"
+            size="small"
+            style="width: 120px"
+            placeholder="输入标签"
+            @keyup.enter="confirmTag"
+            @blur="confirmTag"
+          />
+          <el-button v-else size="small" @click="showTagInput">+ 添加标签</el-button>
+        </div>
+      </el-form-item>
+
+      <el-form-item label="正文" prop="content">
+        <el-input
+          v-model="form.content"
+          type="textarea"
+          :rows="12"
+          placeholder="请输入帖子正文"
+          maxlength="10000"
+          show-word-limit
+        />
+      </el-form-item>
+
+      <el-form-item>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">保存修改</el-button>
+      </el-form-item>
+    </el-form>
+  </div>
+</template>
 
 <style scoped>
 .edit-post-page {

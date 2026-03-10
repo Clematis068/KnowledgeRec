@@ -3,9 +3,12 @@ from app import db
 
 class Tag(db.Model):
     __tablename__ = 'tag'
+    __table_args__ = (
+        db.UniqueConstraint('domain_id', 'name', name='uq_tag_domain_name'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(64), unique=True, nullable=False)
+    name = db.Column(db.String(64), nullable=False)
     domain_id = db.Column(db.Integer, db.ForeignKey('domain.id'), nullable=False)
     embedding = db.Column(db.JSON)  # 1024-dim vector
 
