@@ -1,15 +1,17 @@
 """Pipeline C: LLM 语义增强推荐 (Embedding + LLM Reranking)"""
+import numpy as np
+
 from app import db
 from app.models.user import User
 from app.models.post import Post
 from app.models.behavior import UserBehavior
 from app.services.qwen_service import qwen_service
 from app.services.redis_service import redis_service
+from app.services.user_interest_service import BEHAVIOR_PROFILE_WEIGHTS
 from app.utils.helpers import cosine_similarity, min_max_normalize
 
 
 class SemanticEngine:
-
     def recommend(self, user_id, candidate_ids=None, top_n=200, enable_llm_rerank=True):
         """
         语义推荐：Embedding相似度 + 可选LLM重排序
@@ -21,7 +23,11 @@ class SemanticEngine:
 
         user_emb = user.interest_embedding
 
-        # 冷启动：没有 embedding 时用兴趣标签实时生成
+        # 优先用真实行为在线聚合兴趣向量，避免新用户/新行为长期没有画像
+        if not user_emb:
+            user_emb = self._build_user_embedding_from_behaviors(user_id)
+
+        # 冷启动：仍没有 embedding 时再用兴趣标签实时生成
         if not user_emb:
             tag_names = [t.name for t in user.interest_tags]
             if not tag_names:
@@ -93,3 +99,35 @@ class SemanticEngine:
 
         redis_service.set_json(cache_key, score, ttl=3600)
         return score
+
+    def _build_user_embedding_from_behaviors(self, user_id):
+        behaviors = (
+            UserBehavior.query
+            .filter_by(user_id=user_id)
+            .filter(UserBehavior.behavior_type.in_(['favorite', 'like', 'comment', 'browse']))
+            .order_by(UserBehavior.created_at.desc())
+            .limit(100)
+            .all()
+        )
+        if not behaviors:
+            return None
+
+        embeddings = []
+        weights = []
+        for behavior in behaviors:
+            post = db.session.get(Post, behavior.post_id)
+            if not post or not post.content_embedding:
+                continue
+
+            weight = BEHAVIOR_PROFILE_WEIGHTS.get(behavior.behavior_type, 1.0)
+            if behavior.behavior_type == 'browse':
+                weight *= min((behavior.duration or 30) / 60.0, 2.0)
+            embeddings.append(np.array(post.content_embedding))
+            weights.append(weight)
+
+        if not embeddings:
+            return None
+
+        weights = np.array(weights)
+        weighted_avg = np.average(embeddings, axis=0, weights=weights)
+        return weighted_avg.tolist()

@@ -34,18 +34,21 @@ class GraphEngine:
              END}) AS seeds
 
         UNWIND seeds AS s
-        MATCH (sp:Post {id: s.pid})-[:TAGGED_WITH]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post)
+        MATCH (sp:Post {id: s.pid})
+        MATCH (sp)-[:TAGGED_WITH]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post)
         WHERE NOT candidate.id IN interacted_ids
-        WITH u, candidate, sum(s.w * 0.4) AS tag_score
+        WITH u, candidate,
+             sum(s.w * 0.35) AS tag_score,
+             sum(CASE WHEN candidate.domain_id = sp.domain_id THEN s.w * 0.18 ELSE 0 END) AS domain_score
 
         OPTIONAL MATCH (u)-[:FOLLOWS]->(friend:User)-[fr:LIKED|FAVORITED]->(candidate)
-        WITH candidate, tag_score,
+        WITH candidate, tag_score, domain_score,
              COALESCE(sum(CASE type(fr)
                  WHEN 'FAVORITED' THEN 0.15
                  WHEN 'LIKED' THEN 0.10
                  ELSE 0
              END), 0) AS social_score
-        WITH candidate.id AS post_id, tag_score + social_score AS raw_score
+        WITH candidate.id AS post_id, tag_score + domain_score + social_score AS raw_score
 
         RETURN post_id, raw_score
         ORDER BY raw_score DESC
@@ -59,16 +62,21 @@ class GraphEngine:
         """冷启动回退：用兴趣标签找帖子 + 社交信号加分"""
         cypher = """
         MATCH (u:User {id: $uid})-[it:INTERESTED_IN]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post)
-        WITH u, candidate, sum(COALESCE(it.weight, 1) * 0.5) AS tag_score
+        WITH u, candidate, sum(COALESCE(it.weight, 1) * 0.45) AS tag_score
+
+        OPTIONAL MATCH (u)-[idom:INTERESTED_DOMAIN]->(d:Domain)
+        WHERE candidate.domain_id = d.id
+        WITH u, candidate, tag_score,
+             COALESCE(sum(COALESCE(idom.weight, 1) * 0.2), 0) AS domain_score
 
         OPTIONAL MATCH (u)-[:FOLLOWS]->(friend:User)-[fr:LIKED|FAVORITED]->(candidate)
-        WITH candidate, tag_score,
+        WITH candidate, tag_score, domain_score,
              COALESCE(sum(CASE type(fr)
                  WHEN 'FAVORITED' THEN 0.15
                  WHEN 'LIKED' THEN 0.10
                  ELSE 0
              END), 0) AS social_score
-        WITH candidate.id AS post_id, tag_score + social_score AS raw_score
+        WITH candidate.id AS post_id, tag_score + domain_score + social_score AS raw_score
 
         RETURN post_id, raw_score
         ORDER BY raw_score DESC

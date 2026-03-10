@@ -9,6 +9,12 @@ from .graph_engine import GraphEngine
 from .semantic_engine import SemanticEngine
 from .fusion import FusionEngine
 
+USER_STAGE_WEIGHTS = {
+    'cold': {'cf': 0.10, 'graph': 0.45, 'semantic': 0.45},
+    'warm': {'cf': 0.25, 'graph': 0.40, 'semantic': 0.35},
+    'active': {'cf': 0.45, 'graph': 0.30, 'semantic': 0.25},
+}
+
 
 class RecommendationEngine:
 
@@ -19,36 +25,62 @@ class RecommendationEngine:
         self.fusion = FusionEngine()
 
     def recommend(self, user_id, top_n=20, enable_llm=True, weights=None):
+        results, _ = self.recommend_with_debug(
+            user_id,
+            top_n=top_n,
+            enable_llm=enable_llm,
+            weights=weights,
+        )
+        return results
+
+    def recommend_with_debug(self, user_id, top_n=20, enable_llm=True, weights=None):
         """
         完整三路融合推荐
         1. 协同过滤 -> cf_scores
         2. 图谱传播 -> graph_scores
-        3. 语义增强 -> semantic_scores
+        3. 语义增强独立召回 -> semantic_scores
         4. 加权融合 -> final ranking
         """
-        if weights:
-            self.fusion.weights = weights
-
         # Pipeline A: 协同过滤
         cf_scores = self.cf.recommend(user_id)
 
         # Pipeline B: 知识图谱传播
         graph_scores = self.graph.recommend(user_id)
 
-        # 候选集 = CF + Graph 的并集
-        candidate_ids = set(cf_scores.keys()) | set(graph_scores.keys())
-
-        # Pipeline C: 语义增强（在候选集上运行）
+        # Pipeline C: 语义增强独立召回，不再只对 CF/Graph 做 rerank
         semantic_scores = self.semantic.recommend(
             user_id,
-            candidate_ids=candidate_ids if candidate_ids else None,
             enable_llm_rerank=enable_llm,
         )
 
-        results = self.fusion.fuse_with_details(
-            cf_scores, graph_scores, semantic_scores, top_n
+        resolved_weights, debug_info = self._resolve_weights(
+            user_id,
+            cf_scores,
+            graph_scores,
+            semantic_scores,
+            requested_weights=weights,
         )
-        return self._apply_negative_feedback(user_id, results, top_n)
+
+        results = self.fusion.fuse_with_details(
+            cf_scores,
+            graph_scores,
+            semantic_scores,
+            top_n,
+            weights=resolved_weights,
+        )
+        final_results = self._apply_negative_feedback(user_id, results, top_n)
+        final_post_ids = {item['post_id'] for item in final_results}
+        debug_info['negative_feedback_applied'] = True
+        debug_info['result_count_before_filter'] = len(results)
+        debug_info['result_count_after_filter'] = len(final_results)
+        debug_info['route_samples'] = {
+            'cf': self._build_route_samples(cf_scores, final_post_ids),
+            'graph': self._build_route_samples(graph_scores, final_post_ids),
+            'semantic': self._build_route_samples(semantic_scores, final_post_ids),
+        }
+        debug_info['fusion_preview'] = self._build_result_preview(results)
+        debug_info['final_preview'] = self._build_result_preview(final_results)
+        return final_results, debug_info
 
     def precompute(self):
         """离线预计算（物品相似度矩阵等）"""
@@ -118,6 +150,116 @@ class RecommendationEngine:
 
         rescored_results.sort(key=lambda result: -result['final_score'])
         return rescored_results[:top_n]
+
+    def _resolve_weights(self, user_id, cf_scores, graph_scores, semantic_scores, requested_weights=None):
+        stage = self._get_user_stage(user_id)
+        base_weights = requested_weights or USER_STAGE_WEIGHTS[stage]
+        normalized = self.fusion._normalize_weights(base_weights)
+        availability = {
+            'cf': bool(cf_scores),
+            'graph': bool(graph_scores),
+            'semantic': bool(semantic_scores),
+        }
+
+        available_names = [name for name, available in availability.items() if available]
+        if not available_names:
+            return normalized, {
+                'user_stage': stage,
+                'weights_base': normalized,
+                'weights_used': normalized,
+                'route_availability': availability,
+                'route_counts': {
+                    'cf': len(cf_scores),
+                    'graph': len(graph_scores),
+                    'semantic': len(semantic_scores),
+                },
+            }
+
+        redistributed_total = sum(
+            normalized[name]
+            for name, available in availability.items()
+            if not available
+        )
+        available_total = sum(normalized[name] for name in available_names)
+
+        if available_total <= 0:
+            even_weight = 1.0 / len(available_names)
+            used_weights = {
+                name: (even_weight if name in available_names else 0.0)
+                for name in normalized
+            }
+        else:
+            used_weights = {}
+            for name in normalized:
+                if not availability[name]:
+                    used_weights[name] = 0.0
+                    continue
+                share = normalized[name] / available_total
+                used_weights[name] = normalized[name] + redistributed_total * share
+
+        used_weights = self.fusion._normalize_weights(used_weights)
+        debug_info = {
+            'user_stage': stage,
+            'weights_base': {name: round(value, 4) for name, value in normalized.items()},
+            'weights_used': {name: round(value, 4) for name, value in used_weights.items()},
+            'route_availability': availability,
+            'route_counts': {
+                'cf': len(cf_scores),
+                'graph': len(graph_scores),
+                'semantic': len(semantic_scores),
+            },
+        }
+        return used_weights, debug_info
+
+    def _build_route_samples(self, scores, selected_post_ids, limit=5):
+        ranked = sorted(scores.items(), key=lambda item: -item[1])[:limit]
+        samples = []
+        for post_id, score in ranked:
+            post = db.session.get(Post, post_id)
+            if not post:
+                continue
+            samples.append({
+                'post_id': post.id,
+                'title': post.title,
+                'summary': post.summary,
+                'domain_id': post.domain_id,
+                'author_id': post.author_id,
+                'score': round(score, 4),
+                'selected': post.id in selected_post_ids,
+            })
+        return samples
+
+    def _build_result_preview(self, items, limit=10):
+        preview = []
+        for item in items[:limit]:
+            post = db.session.get(Post, item['post_id'])
+            if not post:
+                continue
+            preview.append({
+                'post_id': post.id,
+                'title': post.title,
+                'final_score': round(item.get('final_score', 0.0), 4),
+                'cf_score': round(item.get('cf_score', 0.0), 4),
+                'graph_score': round(item.get('graph_score', 0.0), 4),
+                'semantic_score': round(item.get('semantic_score', 0.0), 4),
+                'negative_penalty': round(item.get('negative_penalty', 0.0), 4),
+            })
+        return preview
+
+    def _get_user_stage(self, user_id):
+        behavior_count = (
+            UserBehavior.query
+            .filter(
+                UserBehavior.user_id == user_id,
+                UserBehavior.behavior_type.in_(['browse', 'like', 'favorite', 'comment'])
+            )
+            .count()
+        )
+        if behavior_count == 0:
+            return 'cold'
+        if behavior_count < 15:
+            return 'warm'
+        return 'active'
 
 
 recommendation_engine = RecommendationEngine()

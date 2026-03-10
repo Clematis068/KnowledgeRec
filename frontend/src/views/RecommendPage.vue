@@ -9,6 +9,14 @@
         </el-tag>
       </div>
       <div class="header-right">
+        <el-button
+          text
+          :icon="View"
+          :disabled="activeFeed !== 'recommend'"
+          @click="showDebugPanel = true"
+        >
+          Debug
+        </el-button>
         <el-button text :icon="Operation" @click="showSettings = !showSettings">
           调参
         </el-button>
@@ -75,12 +83,13 @@
       :user-id="selectedUserId || authStore.userId"
       :post-id="reasonPostId"
     />
+    <RecommendDebugPanel v-model:visible="showDebugPanel" :debug="recommendDebug" />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { Refresh, Operation } from '@element-plus/icons-vue'
+import { Refresh, Operation, View } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getRecommendations, getMyRecommendations } from '../api/recommendation'
 import { getFollowingPosts, getPostList, recordBehavior } from '../api/post'
@@ -89,6 +98,7 @@ import WeightSlider from '../components/recommend/WeightSlider.vue'
 import UserSelector from '../components/recommend/UserSelector.vue'
 import RecCard from '../components/recommend/RecCard.vue'
 import RecReasonDialog from '../components/recommend/RecReasonDialog.vue'
+import RecommendDebugPanel from '../components/recommend/RecommendDebugPanel.vue'
 import PostCard from '../components/post/PostCard.vue'
 
 const authStore = useAuthStore()
@@ -99,10 +109,12 @@ const weights = ref({ cf: 0.35, graph: 0.35, semantic: 0.30 })
 const loading = ref(false)
 const loadingText = ref('正在加载内容...')
 const showSettings = ref(false)
+const showDebugPanel = ref(false)
 const enableLlm = ref(false)
 const selectedUserId = ref(null)
 
 const recommendations = ref([])
+const recommendDebug = ref(null)
 const followingPosts = ref([])
 const latestPosts = ref([])
 
@@ -132,16 +144,20 @@ async function fetchRecommendations() {
         topN: topN.value,
         enableLlm: enableLlm.value,
         weights: weights.value,
+        debug: true,
       })
       : await getRecommendations(selectedUserId.value, {
         topN: topN.value,
         enableLlm: enableLlm.value,
         weights: weights.value,
+        debug: true,
       })
 
     recommendations.value = data.recommendations || []
+    recommendDebug.value = data.debug || null
   } catch {
     recommendations.value = []
+    recommendDebug.value = null
   } finally {
     loading.value = false
   }

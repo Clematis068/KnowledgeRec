@@ -13,6 +13,7 @@ def get_recommendations(user_id):
     """获取用户的个性化推荐"""
     top_n = request.args.get('top_n', 20, type=int)
     enable_llm = request.args.get('enable_llm', 'true').lower() == 'true'
+    debug = request.args.get('debug', 'false').lower() == 'true'
 
     # 可选自定义权重
     w_cf = request.args.get('w_cf', type=float)
@@ -23,8 +24,11 @@ def get_recommendations(user_id):
         weights = {'cf': w_cf, 'graph': w_graph, 'semantic': w_semantic}
 
     try:
-        results = recommendation_engine.recommend(
-            user_id, top_n=top_n, enable_llm=enable_llm, weights=weights
+        results, debug_info = recommendation_engine.recommend_with_debug(
+            user_id,
+            top_n=top_n,
+            enable_llm=enable_llm,
+            weights=weights,
         )
 
         # 附带帖子详情
@@ -35,7 +39,10 @@ def get_recommendations(user_id):
                 item['summary'] = post.summary
                 item['author_id'] = post.author_id
 
-        return jsonify({"user_id": user_id, "recommendations": results})
+        payload = {"user_id": user_id, "recommendations": results}
+        if debug:
+            payload["debug"] = debug_info
+        return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -47,6 +54,7 @@ def get_my_recommendations():
     user_id = g.current_user.id
     top_n = request.args.get('top_n', 20, type=int)
     enable_llm = request.args.get('enable_llm', 'true').lower() == 'true'
+    debug = request.args.get('debug', 'false').lower() == 'true'
 
     w_cf = request.args.get('w_cf', type=float)
     w_graph = request.args.get('w_graph', type=float)
@@ -56,8 +64,11 @@ def get_my_recommendations():
         weights = {'cf': w_cf, 'graph': w_graph, 'semantic': w_semantic}
 
     try:
-        results = recommendation_engine.recommend(
-            user_id, top_n=top_n, enable_llm=enable_llm, weights=weights
+        results, debug_info = recommendation_engine.recommend_with_debug(
+            user_id,
+            top_n=top_n,
+            enable_llm=enable_llm,
+            weights=weights,
         )
         for item in results:
             post = db.session.get(Post, item['post_id'])
@@ -66,7 +77,10 @@ def get_my_recommendations():
                 item['summary'] = post.summary
                 item['author_id'] = post.author_id
 
-        return jsonify({"user_id": user_id, "recommendations": results})
+        payload = {"user_id": user_id, "recommendations": results}
+        if debug:
+            payload["debug"] = debug_info
+        return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

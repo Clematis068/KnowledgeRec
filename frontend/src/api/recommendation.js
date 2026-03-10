@@ -1,8 +1,8 @@
 import request from './index'
 
 /** 获取用户推荐列表 */
-export function getRecommendations(userId, { topN = 20, enableLlm = true, weights } = {}) {
-  const params = { top_n: topN, enable_llm: enableLlm }
+export function getRecommendations(userId, { topN = 20, enableLlm = true, weights, debug = false } = {}) {
+  const params = { top_n: topN, enable_llm: enableLlm, debug }
   if (weights) {
     params.w_cf = weights.cf
     params.w_graph = weights.graph
@@ -12,8 +12,8 @@ export function getRecommendations(userId, { topN = 20, enableLlm = true, weight
 }
 
 /** 获取当前登录用户的推荐 */
-export function getMyRecommendations({ topN = 20, enableLlm = true, weights } = {}) {
-  const params = { top_n: topN, enable_llm: enableLlm }
+export function getMyRecommendations({ topN = 20, enableLlm = true, weights, debug = false } = {}) {
+  const params = { top_n: topN, enable_llm: enableLlm, debug }
   if (weights) {
     params.w_cf = weights.cf
     params.w_graph = weights.graph

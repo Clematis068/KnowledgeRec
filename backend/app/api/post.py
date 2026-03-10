@@ -8,6 +8,8 @@ from app.models.behavior import (
     UserBlockedDomain,
 )
 from app.models.tag import Tag
+from app.services.tag_taxonomy_service import tag_taxonomy_service
+from app.services.user_interest_service import user_interest_service
 from app.utils.auth import login_required, optional_login
 from app.utils.content_filter import apply_post_visibility_query, is_post_visible_to_user
 
@@ -18,6 +20,8 @@ def _sync_post_to_neo4j(post):
     try:
         from app.services.neo4j_service import neo4j_service
         tag_ids_for_graph = [tag.id for tag in post.tags]
+        for tag in post.tags:
+            tag_taxonomy_service.sync_tag_to_neo4j(tag)
         neo4j_service.run_write(
             "MERGE (p:Post {id: $pid}) "
             "SET p.title = $title, p.domain_id = $did "
@@ -60,23 +64,28 @@ def _refresh_post_summary_and_embedding(post):
         pass
 
 
-def _bind_post_tags(post, domain_id, tag_ids=None, tag_names=None):
+def _bind_post_tags(post, domain_id, tag_ids=None, tag_names=None, source_user_id=None):
     tag_ids = tag_ids or []
     tag_names = tag_names or []
 
     if tag_names:
-        tags = []
-        for name in tag_names:
-            tag = Tag.query.filter_by(name=name).first()
-            if not tag:
-                tag = Tag(name=name, domain_id=domain_id)
-                db.session.add(tag)
-            tags.append(tag)
+        tags, resolutions = tag_taxonomy_service.resolve_tag_names(
+            tag_names,
+            domain_id,
+            source_user_id=source_user_id,
+            source_post_id=post.id,
+        )
         post.tags = tags
+        return resolutions
     elif tag_ids:
-        post.tags = Tag.query.filter(Tag.id.in_(tag_ids)).all()
+        post.tags = (
+            Tag.query
+            .filter(Tag.domain_id == domain_id, Tag.id.in_(tag_ids))
+            .all()
+        )
     else:
         post.tags = []
+    return []
 
 
 def _delete_post_from_neo4j(post_id):
@@ -109,6 +118,23 @@ def _delete_comment_relation_if_needed(user_id, post_id):
         pass
 
 
+def _refresh_user_interest_if_needed(user_id, behavior_type=None, duration=None):
+    """行为变更后刷新用户兴趣画像；浏览仅在停留较久时触发。"""
+    should_refresh = behavior_type in ('like', 'favorite', 'comment', 'dislike')
+    if behavior_type == 'browse' and (duration or 0) >= 30:
+        should_refresh = True
+    if behavior_type in ('unlike', 'unfavorite', 'undislike', 'delete_comment'):
+        should_refresh = True
+
+    if not should_refresh:
+        return
+
+    try:
+        user_interest_service.refresh_user_interest_state(user_id)
+    except Exception:
+        pass
+
+
 @post_bp.route('/create', methods=['POST'])
 @login_required
 def create_post():
@@ -130,10 +156,16 @@ def create_post():
         domain_id=domain_id,
     )
 
-    _bind_post_tags(post, domain_id, tag_ids=tag_ids, tag_names=tag_names)
-    _refresh_post_summary_and_embedding(post)
-
     db.session.add(post)
+    db.session.flush()
+    _bind_post_tags(
+        post,
+        domain_id,
+        tag_ids=tag_ids,
+        tag_names=tag_names,
+        source_user_id=g.current_user.id,
+    )
+    _refresh_post_summary_and_embedding(post)
     db.session.commit()
     _sync_post_to_neo4j(post)
 
@@ -175,7 +207,13 @@ def update_post(post_id):
     post.title = title
     post.content = content
     post.domain_id = domain_id
-    _bind_post_tags(post, domain_id, tag_ids=tag_ids, tag_names=tag_names)
+    _bind_post_tags(
+        post,
+        domain_id,
+        tag_ids=tag_ids,
+        tag_names=tag_names,
+        source_user_id=g.current_user.id,
+    )
     _refresh_post_summary_and_embedding(post)
 
     db.session.commit()
@@ -350,6 +388,12 @@ def record_behavior(post_id):
     except Exception:
         pass  # Neo4j 可能未启动
 
+    _refresh_user_interest_if_needed(
+        user_id,
+        behavior_type=behavior_type,
+        duration=data.get('duration') if behavior_type == 'browse' else None,
+    )
+
     return jsonify({"message": "行为记录成功", "behavior": behavior.to_dict()}), 201
 
 
@@ -382,6 +426,8 @@ def unlike_post(post_id):
         )
     except Exception:
         pass
+
+    _refresh_user_interest_if_needed(user_id, behavior_type='unlike')
 
     return jsonify({"message": "已取消点赞"})
 
@@ -471,11 +517,13 @@ def delete_comment(post_id, comment_id):
         comment.comment_text = '[该评论已删除]'
         db.session.commit()
         _delete_comment_relation_if_needed(comment.user_id, post_id)
+        _refresh_user_interest_if_needed(comment.user_id, behavior_type='delete_comment')
         return jsonify({"message": "评论已删除"}), 200
 
     db.session.delete(comment)
     db.session.commit()
     _delete_comment_relation_if_needed(comment.user_id, post_id)
+    _refresh_user_interest_if_needed(comment.user_id, behavior_type='delete_comment')
     return jsonify({"message": "评论已删除"}), 200
 
 
@@ -507,6 +555,8 @@ def unfavorite_post(post_id):
     except Exception:
         pass
 
+    _refresh_user_interest_if_needed(user_id, behavior_type='unfavorite')
+
     return jsonify({"message": "已取消收藏"})
 
 
@@ -537,6 +587,8 @@ def undislike_post(post_id):
         )
     except Exception:
         pass
+
+    _refresh_user_interest_if_needed(user_id, behavior_type='undislike')
 
     return jsonify({"message": "已取消不感兴趣"})
 
