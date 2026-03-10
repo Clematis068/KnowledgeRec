@@ -4,7 +4,7 @@
 
     <template v-if="user">
       <!-- 个人信息卡片 -->
-      <el-card class="profile-card">
+      <el-card class="profile-card" shadow="never">
         <div class="profile">
           <el-avatar :size="64" class="avatar">
             {{ user.username?.charAt(0)?.toUpperCase() }}
@@ -24,7 +24,7 @@
               <el-button
                 v-if="isOwnProfile"
                 size="small"
-                @click="editDialogVisible = true"
+                @click="openEditDialog"
               >
                 编辑资料
               </el-button>
@@ -59,7 +59,7 @@
       </el-card>
 
       <!-- Tab 内容区 -->
-      <el-card style="margin-top: 16px">
+      <el-card class="content-card" shadow="never">
         <el-tabs v-model="activeTab" @tab-change="onTabChange">
           <el-tab-pane label="帖子" name="posts">
             <div v-loading="tabLoading">
@@ -174,35 +174,13 @@
 
     <el-empty v-else-if="!loading" description="用户不存在" />
 
-    <!-- 编辑资料弹窗 -->
-    <el-dialog v-model="editDialogVisible" title="编辑资料" width="480px">
-      <el-form label-position="top">
-        <el-form-item label="简介">
-          <el-input v-model="editForm.bio" type="textarea" :rows="3" maxlength="200" show-word-limit />
-        </el-form-item>
-        <el-form-item label="性别">
-          <el-select v-model="editForm.gender" style="width: 100%">
-            <el-option label="男" value="male" />
-            <el-option label="女" value="female" />
-            <el-option label="其他" value="other" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="邮箱">
-          <el-input v-model="editForm.email" />
-        </el-form-item>
-        <el-form-item label="兴趣标签">
-          <el-checkbox-group v-model="editForm.tag_ids">
-            <el-checkbox v-for="tag in allTags" :key="tag.id" :label="tag.id">
-              {{ tag.name }}
-            </el-checkbox>
-          </el-checkbox-group>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="editLoading" @click="handleSaveProfile">保存</el-button>
-      </template>
-    </el-dialog>
+    <ProfileEditDialog
+      v-model:visible="editDialogVisible"
+      :saving="editLoading"
+      :profile="editableProfile"
+      :tag-groups="tagGroups"
+      @save="handleSaveProfile"
+    />
   </div>
 </template>
 
@@ -220,6 +198,7 @@ import { useAuthStore } from '../stores/auth'
 import { deletePost } from '../api/post'
 import PostCard from '../components/post/PostCard.vue'
 import BehaviorTimeline from '../components/user/BehaviorTimeline.vue'
+import ProfileEditDialog from '../components/user/ProfileEditDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -257,14 +236,19 @@ const blockedDomains = ref([])
 // 编辑资料
 const editDialogVisible = ref(false)
 const editLoading = ref(false)
-const editForm = ref({ bio: '', gender: '', email: '', tag_ids: [] })
-const allTags = ref([])
+const tagGroups = ref([])
 
 // 已加载的 tab 集合（用于懒加载）
 const loadedTabs = ref(new Set())
 
 const userId = computed(() => Number(route.params.id))
 const isOwnProfile = computed(() => authStore.userId === userId.value)
+const editableProfile = computed(() => ({
+  bio: user.value?.bio || '',
+  gender: user.value?.gender || '',
+  email: user.value?.email || '',
+  tag_ids: (user.value?.interest_tags || []).map((tag) => tag.id),
+}))
 
 async function fetchProfile() {
   loading.value = true
@@ -396,11 +380,18 @@ async function toggleFollow() {
   }
 }
 
-async function handleSaveProfile() {
+function openEditDialog() {
+  editDialogVisible.value = true
+}
+
+async function handleSaveProfile(payload) {
   editLoading.value = true
   try {
-    const updated = await updateProfile(editForm.value)
+    const updated = await updateProfile(payload)
     user.value = updated
+    if (isOwnProfile.value) {
+      await authStore.fetchUser()
+    }
     editDialogVisible.value = false
     ElMessage.success('资料已更新')
   } finally {
@@ -466,34 +457,12 @@ watch(activeTab, (tab) => {
 
 onMounted(async () => {
   fetchProfile()
-  // 加载所有标签（编辑用）
+  // 加载按领域分组的标签（编辑用）
   try {
     const data = await getTags()
-    allTags.value = data.tags || data
+    tagGroups.value = data.groups || []
   } catch {
     // ignore
-  }
-
-  // 初始化编辑表单
-  if (isOwnProfile.value && user.value) {
-    editForm.value = {
-      bio: user.value.bio || '',
-      gender: user.value.gender || '',
-      email: user.value.email || '',
-      tag_ids: (user.value.interest_tags || []).map(t => t.id),
-    }
-  }
-})
-
-// 打开编辑弹窗时同步数据
-watch(editDialogVisible, (visible) => {
-  if (visible && user.value) {
-    editForm.value = {
-      bio: user.value.bio || '',
-      gender: user.value.gender || '',
-      email: user.value.email || '',
-      tag_ids: (user.value.interest_tags || []).map(t => t.id),
-    }
   }
 })
 </script>
@@ -504,14 +473,24 @@ watch(editDialogVisible, (visible) => {
   margin: 0 auto;
 }
 
+.profile-card,
+.content-card {
+  border-radius: 28px;
+}
+
+.content-card {
+  margin-top: 16px;
+}
+
 .profile {
   display: flex;
   gap: 20px;
   align-items: flex-start;
+  padding: 4px 2px;
 }
 
 .avatar {
-  background: #409eff;
+  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
   color: #fff;
   font-size: 24px;
   flex-shrink: 0;
@@ -524,40 +503,48 @@ watch(editDialogVisible, (visible) => {
 .profile-top {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .profile-top h2 {
-  font-size: 20px;
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
   margin: 0;
 }
 
 .bio {
   font-size: 14px;
-  color: #606266;
-  margin-bottom: 8px;
+  color: var(--kr-text-soft);
+  line-height: 1.8;
+  margin-bottom: 12px;
 }
 
 .interest-tags {
-  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .interest-tag {
-  margin-right: 6px;
-  margin-bottom: 4px;
+  margin-right: 0;
+  margin-bottom: 0;
 }
 
 .stats {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   font-size: 14px;
-  color: #606266;
+  color: var(--kr-text-soft);
 }
 
 .stat-item strong {
-  color: #303133;
+  color: var(--kr-text);
 }
 
 .stat-item.clickable {
@@ -645,11 +632,11 @@ watch(editDialogVisible, (visible) => {
 }
 
 .user-item:hover .user-item-name {
-  color: #409eff;
+  color: var(--kr-primary);
 }
 
 .user-item-avatar {
-  background: #409eff;
+  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
   color: #fff;
   font-size: 14px;
   flex-shrink: 0;
@@ -658,12 +645,18 @@ watch(editDialogVisible, (visible) => {
 .user-item-name {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--kr-text);
 }
 
 .user-item-bio {
   font-size: 12px;
-  color: #909399;
+  color: var(--kr-text-muted);
   margin-top: 2px;
+}
+
+@media (max-width: 720px) {
+  .profile {
+    flex-direction: column;
+  }
 }
 </style>

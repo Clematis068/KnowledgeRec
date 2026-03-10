@@ -1,0 +1,313 @@
+<script setup>
+import { computed, reactive, watch } from 'vue'
+
+const props = defineProps({
+  visible: {
+    type: Boolean,
+    default: false,
+  },
+  saving: {
+    type: Boolean,
+    default: false,
+  },
+  profile: {
+    type: Object,
+    required: true,
+  },
+  tagGroups: {
+    type: Array,
+    default: () => [],
+  },
+})
+
+const emit = defineEmits(['update:visible', 'save'])
+
+const localForm = reactive({
+  bio: '',
+  gender: '',
+  email: '',
+  tag_ids: [],
+})
+
+const selectedTags = computed(() => {
+  const selected = []
+  const selectedIds = new Set(localForm.tag_ids)
+  for (const group of props.tagGroups) {
+    for (const tag of group.tags || []) {
+      if (selectedIds.has(tag.id)) {
+        selected.push(tag)
+      }
+    }
+  }
+  return selected
+})
+
+function removeTag(tagId) {
+  localForm.tag_ids = localForm.tag_ids.filter((id) => id !== tagId)
+}
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (!visible) return
+    localForm.bio = props.profile.bio || ''
+    localForm.gender = props.profile.gender || ''
+    localForm.email = props.profile.email || ''
+    localForm.tag_ids = [...(props.profile.tag_ids || [])]
+  },
+  { immediate: true },
+)
+
+function closeDialog() {
+  emit('update:visible', false)
+}
+
+function saveProfile() {
+  emit('save', {
+    bio: localForm.bio.trim(),
+    gender: localForm.gender,
+    email: localForm.email.trim(),
+    tag_ids: [...localForm.tag_ids],
+  })
+}
+</script>
+
+<template>
+  <el-dialog
+    :model-value="visible"
+    title="编辑资料"
+    width="720px"
+    class="profile-edit-dialog"
+    draggable
+    overflow
+    :lock-scroll="false"
+    @update:model-value="emit('update:visible', $event)"
+    @close="closeDialog"
+  >
+    <div class="dialog-layout">
+      <section class="panel overview-panel">
+        <div class="panel-head">
+          <h3>资料概览</h3>
+          <p>简介、邮箱和兴趣标签会一起更新。</p>
+        </div>
+
+        <div class="field-block">
+          <label class="field-label" for="profile-bio">简介</label>
+          <el-input
+            id="profile-bio"
+            v-model="localForm.bio"
+            type="textarea"
+            :rows="4"
+            maxlength="200"
+            show-word-limit
+            placeholder="介绍一下你的研究方向、关注主题或社区身份。"
+          />
+        </div>
+
+        <div class="field-grid">
+          <div class="field-block">
+            <label class="field-label" for="profile-gender">性别</label>
+            <el-select id="profile-gender" v-model="localForm.gender" class="full-width">
+              <el-option label="男" value="male" />
+              <el-option label="女" value="female" />
+              <el-option label="其他" value="other" />
+            </el-select>
+          </div>
+
+          <div class="field-block">
+            <label class="field-label" for="profile-email">邮箱</label>
+            <el-input id="profile-email" v-model="localForm.email" placeholder="name@example.com" />
+          </div>
+        </div>
+
+        <div class="selected-panel">
+          <div class="selected-head">
+            <span class="field-label">已选兴趣</span>
+            <span class="selected-count">{{ localForm.tag_ids.length }} 个</span>
+          </div>
+          <div v-if="selectedTags.length" class="selected-tags">
+            <el-tag
+              v-for="tag in selectedTags"
+              :key="tag.id"
+              closable
+              size="small"
+              effect="plain"
+              @close="removeTag(tag.id)"
+            >
+              {{ tag.name }}
+            </el-tag>
+          </div>
+          <p v-else class="selected-empty">还没有选择兴趣标签。</p>
+        </div>
+      </section>
+
+      <section class="panel tag-panel">
+        <div class="panel-head">
+          <h3>兴趣标签</h3>
+          <p>按领域勾选，推荐结果会更贴近你的主题偏好。</p>
+        </div>
+
+        <div v-if="tagGroups.length" class="group-list">
+          <section v-for="group in tagGroups" :key="group.domain.id" class="group-card">
+            <div class="group-head">
+              <strong>{{ group.domain.name }}</strong>
+              <p>{{ group.domain.description || '选择这个领域里你更常看的主题。' }}</p>
+            </div>
+            <el-checkbox-group v-model="localForm.tag_ids" class="checkbox-grid">
+              <el-checkbox v-for="tag in group.tags" :key="tag.id" :label="tag.id">
+                {{ tag.name }}
+              </el-checkbox>
+            </el-checkbox-group>
+          </section>
+        </div>
+        <el-empty v-else description="暂无兴趣标签数据" :image-size="72" />
+      </section>
+    </div>
+
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button @click="closeDialog">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveProfile">保存</el-button>
+      </div>
+    </template>
+  </el-dialog>
+</template>
+
+<style scoped>
+:deep(.profile-edit-dialog) {
+  margin: 16px auto !important;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.profile-edit-dialog .el-dialog__body) {
+  overflow: auto;
+}
+
+.dialog-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 18px;
+}
+
+.panel {
+  padding: 20px;
+  border: 1px solid rgba(124, 58, 237, 0.1);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.panel-head {
+  margin-bottom: 18px;
+}
+
+.panel-head h3 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.panel-head p,
+.group-head p,
+.selected-empty {
+  margin: 0;
+  color: var(--kr-text-soft);
+  line-height: 1.7;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field-block + .field-block,
+.selected-panel {
+  margin-top: 16px;
+}
+
+.field-label {
+  display: inline-flex;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--kr-text);
+}
+
+.full-width {
+  width: 100%;
+}
+
+.selected-panel,
+.group-card {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(124, 58, 237, 0.04);
+}
+
+.selected-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.selected-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kr-primary);
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.group-list {
+  display: grid;
+  gap: 14px;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.group-head {
+  margin-bottom: 12px;
+}
+
+.group-head strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 16px;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px 12px;
+}
+
+.checkbox-grid :deep(.el-checkbox) {
+  margin-right: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .dialog-layout,
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

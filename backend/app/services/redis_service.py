@@ -49,5 +49,11 @@ class RedisService:
         """删除缓存键"""
         self.client.delete(key)
 
+    def delete_pattern(self, pattern):
+        """按模式删除键"""
+        keys = self.client.keys(pattern)
+        if keys:
+            self.client.delete(*keys)
+
 
 redis_service = RedisService()

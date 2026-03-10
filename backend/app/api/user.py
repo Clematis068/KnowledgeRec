@@ -11,6 +11,7 @@ from app.models.behavior import (
     UserBlockedDomain,
 )
 from app.services.tag_taxonomy_service import tag_taxonomy_service
+from app.services.redis_service import redis_service
 from app.utils.auth import login_required, optional_login
 from app.utils.content_filter import apply_post_visibility_query, filter_posts
 
@@ -67,10 +68,16 @@ def update_profile():
     if 'tag_ids' in data:
         tags = Tag.query.filter(Tag.id.in_(data['tag_ids'])).all()
         user.interest_tags = tags
+        user.interest_embedding = None
+        user.interest_profile = (
+            f'注册兴趣：{"、".join(tag.name for tag in tags[:6])}。'
+            if tags else None
+        )
 
     db.session.commit()
     if 'tag_ids' in data:
         tag_taxonomy_service.sync_user_interest_tags(user)
+        redis_service.delete_pattern(f'llm_rel:{user.id}:*')
     return jsonify(user.to_dict())
 
 
