@@ -28,6 +28,26 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  infoTitle: {
+    type: String,
+    default: '我们会向你的邮箱发送 6 位验证码，验证通过后才能继续。',
+  },
+  successTitle: {
+    type: String,
+    default: '邮箱验证成功',
+  },
+  successSubtitle: {
+    type: String,
+    default: '可以继续选择兴趣标签了',
+  },
+  sendButtonText: {
+    type: String,
+    default: '发送验证码',
+  },
+  verifyButtonText: {
+    type: String,
+    default: '验证邮箱',
+  },
 })
 
 const emit = defineEmits(['update:code', 'send-code', 'verify-code'])
@@ -40,7 +60,7 @@ function handleInput(value) {
 <template>
   <div class="email-step">
     <el-alert
-      title="我们会向你的邮箱发送 6 位验证码，验证通过后才能继续。"
+      :title="infoTitle"
       type="info"
       :closable="false"
       show-icon
@@ -60,10 +80,10 @@ function handleInput(value) {
         @update:model-value="handleInput"
       />
       <el-button :disabled="countdown > 0" :loading="sending" @click="$emit('send-code')">
-        {{ countdown > 0 ? `${countdown}s 后重发` : '发送验证码' }}
+        {{ countdown > 0 ? `${countdown}s 后重发` : sendButtonText }}
       </el-button>
       <el-button type="primary" :loading="verifying" @click="$emit('verify-code')">
-        验证邮箱
+        {{ verifyButtonText }}
       </el-button>
     </div>
 
@@ -78,8 +98,8 @@ function handleInput(value) {
     <el-result
       v-if="verified"
       icon="success"
-      title="邮箱验证成功"
-      sub-title="可以继续选择兴趣标签了"
+      :title="successTitle"
+      :sub-title="successSubtitle"
     />
   </div>
 </template>

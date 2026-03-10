@@ -93,6 +93,7 @@ function goToDashboard() {
             </el-form>
 
             <div class="login-links">
+              <router-link to="/forgot-password">忘记密码？</router-link>
               <router-link to="/register">没有账号？去注册</router-link>
               <router-link to="/">回首页</router-link>
             </div>

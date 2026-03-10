@@ -27,3 +27,15 @@ export function sendEmailCode(email) {
 export function verifyEmailCode(email, code) {
   return request.post('/auth/verify-email-code', { email, code })
 }
+
+export function sendResetPasswordCode(email) {
+  return request.post('/auth/send-reset-password-code', { email })
+}
+
+export function verifyResetPasswordCode(email, code) {
+  return request.post('/auth/verify-reset-password-code', { email, code })
+}
+
+export function resetPassword({ email, password }) {
+  return request.post('/auth/reset-password', { email, password })
+}

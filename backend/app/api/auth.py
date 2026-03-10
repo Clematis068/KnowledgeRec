@@ -32,8 +32,24 @@ def _email_cooldown_key(email):
     return f'email_code_cooldown:register:{email.lower()}'
 
 
+def _password_reset_code_key(email):
+    return f'email_code:reset_password:{email.lower()}'
+
+
+def _password_reset_verified_key(email):
+    return f'email_verified:reset_password:{email.lower()}'
+
+
+def _password_reset_cooldown_key(email):
+    return f'email_code_cooldown:reset_password:{email.lower()}'
+
+
 def _is_valid_email(email):
     return bool(EMAIL_PATTERN.match(email or ''))
+
+
+def _generate_email_code():
+    return ''.join(str(random.randint(0, 9)) for _ in range(6))
 
 
 @auth_bp.route('/register', methods=['POST'])
@@ -101,12 +117,43 @@ def send_email_code():
     if redis_service.get_value(cooldown_key):
         return jsonify({'error': '验证码发送过于频繁，请稍后再试'}), 429
 
-    code = ''.join(str(random.randint(0, 9)) for _ in range(6))
+    code = _generate_email_code()
     redis_service.set_value(_email_code_key(email), code, ttl=EMAIL_CODE_TTL)
     redis_service.set_value(cooldown_key, '1', ttl=EMAIL_SEND_COOLDOWN)
     redis_service.delete(_email_verified_key(email))
 
     send_result = mail_service.send_verification_code(email, code)
+    payload = {'message': '验证码已发送'}
+    if send_result.get('mode') == 'dev':
+        payload['dev_code'] = code
+    return jsonify(payload)
+
+
+@auth_bp.route('/send-reset-password-code', methods=['POST'])
+def send_reset_password_code():
+    """发送找回密码邮箱验证码"""
+    data = request.get_json() or {}
+    email = data.get('email', '').strip().lower()
+
+    if not email:
+        return jsonify({'error': '邮箱不能为空'}), 400
+    if not _is_valid_email(email):
+        return jsonify({'error': '邮箱格式不正确'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'error': '该邮箱尚未注册'}), 404
+
+    cooldown_key = _password_reset_cooldown_key(email)
+    if redis_service.get_value(cooldown_key):
+        return jsonify({'error': '验证码发送过于频繁，请稍后再试'}), 429
+
+    code = _generate_email_code()
+    redis_service.set_value(_password_reset_code_key(email), code, ttl=EMAIL_CODE_TTL)
+    redis_service.set_value(cooldown_key, '1', ttl=EMAIL_SEND_COOLDOWN)
+    redis_service.delete(_password_reset_verified_key(email))
+
+    send_result = mail_service.send_password_reset_code(email, code)
     payload = {'message': '验证码已发送'}
     if send_result.get('mode') == 'dev':
         payload['dev_code'] = code
@@ -134,6 +181,62 @@ def verify_email_code():
     redis_service.set_value(_email_verified_key(email), '1', ttl=EMAIL_VERIFIED_TTL)
     redis_service.delete(_email_code_key(email))
     return jsonify({'message': '邮箱验证通过', 'verified': True})
+
+
+@auth_bp.route('/verify-reset-password-code', methods=['POST'])
+def verify_reset_password_code():
+    """校验找回密码邮箱验证码"""
+    data = request.get_json() or {}
+    email = data.get('email', '').strip().lower()
+    code = (data.get('code') or '').strip()
+
+    if not email or not code:
+        return jsonify({'error': '邮箱和验证码不能为空'}), 400
+    if not _is_valid_email(email):
+        return jsonify({'error': '邮箱格式不正确'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'error': '该邮箱尚未注册'}), 404
+
+    cached_code = redis_service.get_value(_password_reset_code_key(email))
+    if not cached_code:
+        return jsonify({'error': '验证码已过期，请重新发送'}), 400
+    if cached_code != code:
+        return jsonify({'error': '验证码错误'}), 400
+
+    redis_service.set_value(_password_reset_verified_key(email), '1', ttl=EMAIL_VERIFIED_TTL)
+    redis_service.delete(_password_reset_code_key(email))
+    return jsonify({'message': '邮箱验证通过', 'verified': True})
+
+
+@auth_bp.route('/reset-password', methods=['POST'])
+def reset_password():
+    """通过邮箱验证码重置密码"""
+    data = request.get_json() or {}
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({'error': '邮箱和新密码不能为空'}), 400
+    if not _is_valid_email(email):
+        return jsonify({'error': '邮箱格式不正确'}), 400
+    if len(password) < 6:
+        return jsonify({'error': '密码至少6位'}), 400
+    if redis_service.get_value(_password_reset_verified_key(email)) != '1':
+        return jsonify({'error': '请先完成邮箱验证'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'error': '该邮箱尚未注册'}), 404
+
+    user.set_password(password)
+    db.session.commit()
+
+    redis_service.delete(_password_reset_verified_key(email))
+    redis_service.delete(_password_reset_code_key(email))
+    redis_service.delete(_password_reset_cooldown_key(email))
+    return jsonify({'message': '密码重置成功'})
 
 
 @auth_bp.route('/mail/status', methods=['GET'])

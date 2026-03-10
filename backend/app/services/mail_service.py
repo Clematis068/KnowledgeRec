@@ -18,6 +18,14 @@ class MailService:
         )
         return self.send_text_email(email, subject, body)
 
+    def send_password_reset_code(self, email, code):
+        subject = 'KnowledgeRec 重置密码验证码'
+        body = (
+            f'你的重置密码验证码是：{code}\n\n'
+            '验证码 10 分钟内有效，验证通过后可以设置新密码。'
+        )
+        return self.send_text_email(email, subject, body)
+
     def send_text_email(self, email, subject, body):
         """发送纯文本邮件"""
         if not self.is_configured():

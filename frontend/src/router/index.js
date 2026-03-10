@@ -19,6 +19,11 @@ const routes = [
     component: () => import('../views/RegisterPage.vue'),
   },
   {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('../views/ForgotPasswordPage.vue'),
+  },
+  {
     path: '/',
     component: AppLayout,
     children: [
