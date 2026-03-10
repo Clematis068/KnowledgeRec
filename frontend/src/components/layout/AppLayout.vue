@@ -1,19 +1,23 @@
 <template>
-  <el-container class="app-layout">
-    <el-header :height="'56px'" class="app-header">
+  <div class="app-layout">
+    <header class="app-header">
       <AppNavbar />
-    </el-header>
-    <el-container>
-      <el-aside width="180px" class="app-aside">
+    </header>
+
+    <div class="app-body">
+      <aside class="app-aside">
         <AppSidebar />
-      </el-aside>
-      <el-main class="app-main">
-        <router-view v-slot="{ Component, route }">
-          <component :is="Component" :key="route.fullPath" />
-        </router-view>
-      </el-main>
-    </el-container>
-  </el-container>
+      </aside>
+
+      <main class="app-main">
+        <div class="app-main-inner">
+          <router-view v-slot="{ Component, route }">
+            <component :is="Component" :key="route.fullPath" />
+          </router-view>
+        </div>
+      </main>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -23,21 +27,55 @@ import AppSidebar from './AppSidebar.vue'
 
 <style scoped>
 .app-layout {
-  height: 100vh;
+  min-height: 100vh;
+  padding: 16px;
 }
 
 .app-header {
-  padding: 0;
+  position: sticky;
+  top: 16px;
+  z-index: 30;
+  margin-bottom: 16px;
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
 }
 
 .app-aside {
-  background: #fff;
-  border-right: 1px solid #e4e7ed;
-  overflow-y: auto;
+  position: sticky;
+  top: 96px;
 }
 
 .app-main {
-  background: #f5f7fa;
-  overflow-y: auto;
+  min-width: 0;
+}
+
+.app-main-inner {
+  min-height: calc(100vh - 120px);
+  padding: 28px;
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 18px 48px rgba(76, 29, 149, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+@media (max-width: 1100px) {
+  .app-body {
+    grid-template-columns: 1fr;
+  }
+
+  .app-aside,
+  .app-header {
+    position: static;
+  }
+
+  .app-main-inner {
+    padding: 20px;
+  }
 }
 </style>

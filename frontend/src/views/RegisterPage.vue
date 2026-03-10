@@ -182,125 +182,189 @@ onBeforeUnmount(clearCountdown)
 
 <template>
   <div class="register-page">
-    <el-card class="register-card" shadow="hover">
-      <div class="brand">
-        <el-icon :size="28" color="#409eff"><Connection /></el-icon>
-        <h2>注册账号</h2>
-        <p>3 步完成注册，先完善资料，再验证邮箱，最后选兴趣。</p>
-      </div>
+    <div class="register-shell">
+      <section class="register-copy card-panel">
+        <span class="page-kicker">Register</span>
+        <h1>三步创建你的社区账号。</h1>
+        <p>先填账号信息，再验证邮箱，最后选择兴趣。</p>
 
-      <el-steps :active="currentStep" finish-status="success" simple class="steps">
-        <el-step title="账号信息" />
-        <el-step title="邮件验证" />
-        <el-step title="兴趣标签" />
-      </el-steps>
-
-      <div v-show="currentStep === 0" class="step-panel">
-        <el-form ref="accountFormRef" :model="form" :rules="rules" label-position="top" size="large">
-          <el-form-item label="用户名" prop="username">
-            <el-input v-model="form.username" placeholder="请输入用户名" />
-          </el-form-item>
-
-          <el-form-item label="邮箱" prop="email">
-            <el-input v-model="form.email" placeholder="请输入常用邮箱" />
-          </el-form-item>
-
-          <el-form-item label="密码" prop="password">
-            <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" />
-          </el-form-item>
-
-          <el-form-item label="确认密码" prop="confirmPassword">
-            <el-input v-model="form.confirmPassword" type="password" show-password placeholder="再次输入密码" />
-          </el-form-item>
-
-          <el-form-item label="性别">
-            <el-radio-group v-model="form.gender">
-              <el-radio value="male">男</el-radio>
-              <el-radio value="female">女</el-radio>
-              <el-radio value="other">其他</el-radio>
-            </el-radio-group>
-          </el-form-item>
-        </el-form>
-
-        <div class="actions">
-          <span />
-          <el-button type="primary" @click="goToEmailStep">下一步</el-button>
+        <div class="copy-links">
+          <router-link to="/login">
+            <el-button plain size="large">已有账号，去登录</el-button>
+          </router-link>
+          <router-link to="/">
+            <el-button text size="large">回首页</el-button>
+          </router-link>
         </div>
-      </div>
+      </section>
 
-      <div v-show="currentStep === 1" class="step-panel">
-        <RegisterEmailStep
-          v-model:code="emailCode"
-          :email="form.email"
-          :countdown="countdown"
-          :sending="sendingCode"
-          :verifying="verifyingCode"
-          :verified="emailVerified"
-          :dev-code="devCode"
-          @send-code="handleSendCode"
-          @verify-code="handleVerifyCode"
-        />
-
-        <div class="actions">
-          <el-button @click="currentStep = 0">上一步</el-button>
-          <el-button type="primary" @click="goToInterestStep">下一步</el-button>
-        </div>
-      </div>
-
-      <div v-show="currentStep === 2" class="step-panel">
-        <RegisterInterestStep
-          v-model:selected-tag-ids="form.tag_ids"
-          :groups="tagGroups"
-          :loading="tagsLoading"
-          :min-selection="MIN_INTEREST_SELECTION"
-        />
-
-        <div v-if="tagError" class="tag-hint">
-          请至少选择 {{ MIN_INTEREST_SELECTION }} 个兴趣标签
+      <el-card class="register-card" shadow="never">
+        <div class="brand-row">
+          <div class="brand-mark">
+            <el-icon :size="20"><Connection /></el-icon>
+          </div>
+          <div>
+            <h2>注册账号</h2>
+            <p>完成后直接进入推荐页。</p>
+          </div>
         </div>
 
-        <div class="actions">
-          <el-button @click="currentStep = 1">上一步</el-button>
-          <el-button type="primary" :loading="loading" @click="handleRegister">完成注册</el-button>
-        </div>
-      </div>
+        <el-steps :active="currentStep" finish-status="success" simple class="steps">
+          <el-step title="账号" />
+          <el-step title="邮箱" />
+          <el-step title="兴趣" />
+        </el-steps>
 
-      <div class="footer-link">
-        已有账号？<router-link to="/login">去登录</router-link>
-      </div>
-    </el-card>
+        <div v-show="currentStep === 0" class="step-panel">
+          <el-form ref="accountFormRef" :model="form" :rules="rules" label-position="top" size="large">
+            <el-form-item label="用户名" prop="username">
+              <el-input v-model="form.username" placeholder="请输入用户名" />
+            </el-form-item>
+
+            <el-form-item label="邮箱" prop="email">
+              <el-input v-model="form.email" placeholder="请输入常用邮箱" />
+            </el-form-item>
+
+            <el-form-item label="密码" prop="password">
+              <el-input v-model="form.password" type="password" show-password placeholder="至少 6 位" />
+            </el-form-item>
+
+            <el-form-item label="确认密码" prop="confirmPassword">
+              <el-input v-model="form.confirmPassword" type="password" show-password placeholder="再次输入密码" />
+            </el-form-item>
+
+            <el-form-item label="性别">
+              <el-radio-group v-model="form.gender">
+                <el-radio value="male">男</el-radio>
+                <el-radio value="female">女</el-radio>
+                <el-radio value="other">其他</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-form>
+
+          <div class="actions actions-end">
+            <el-button type="primary" @click="goToEmailStep">下一步</el-button>
+          </div>
+        </div>
+
+        <div v-show="currentStep === 1" class="step-panel">
+          <RegisterEmailStep
+            v-model:code="emailCode"
+            :email="form.email"
+            :countdown="countdown"
+            :sending="sendingCode"
+            :verifying="verifyingCode"
+            :verified="emailVerified"
+            :dev-code="devCode"
+            @send-code="handleSendCode"
+            @verify-code="handleVerifyCode"
+          />
+
+          <div class="actions">
+            <el-button @click="currentStep = 0">上一步</el-button>
+            <el-button type="primary" @click="goToInterestStep">下一步</el-button>
+          </div>
+        </div>
+
+        <div v-show="currentStep === 2" class="step-panel">
+          <RegisterInterestStep
+            v-model:selected-tag-ids="form.tag_ids"
+            :groups="tagGroups"
+            :loading="tagsLoading"
+            :min-selection="MIN_INTEREST_SELECTION"
+          />
+
+          <div v-if="tagError" class="tag-hint">
+            请至少选择 {{ MIN_INTEREST_SELECTION }} 个兴趣标签
+          </div>
+
+          <div class="actions">
+            <el-button @click="currentStep = 1">上一步</el-button>
+            <el-button type="primary" :loading="loading" @click="handleRegister">完成注册</el-button>
+          </div>
+        </div>
+      </el-card>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .register-page {
   min-height: 100vh;
+  padding: 24px;
+}
+
+.register-shell {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.card-panel,
+.register-card {
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.register-copy {
+  padding: 34px;
+}
+
+.page-kicker {
+  display: inline-flex;
+  margin-bottom: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kr-primary);
+}
+
+.register-copy h1,
+.brand-row h2 {
+  letter-spacing: -0.04em;
+}
+
+.register-copy h1 {
+  max-width: 10ch;
+  font-size: clamp(2.6rem, 5vw, 4.6rem);
+  line-height: 0.95;
+}
+
+.register-copy p,
+.brand-row p {
+  margin-top: 14px;
+  color: var(--kr-text-soft);
+  line-height: 1.75;
+}
+
+.copy-links {
+  display: flex;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.brand-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #e8f4fd 0%, #f0f2f5 100%);
-  padding: 40px 16px;
+  gap: 14px;
+  margin-bottom: 22px;
 }
 
-.register-card {
-  width: min(760px, 100%);
-  border-radius: 20px;
-}
-
-.brand {
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-.brand h2 {
-  margin: 8px 0 4px;
-  font-size: 24px;
-  color: #303133;
-}
-
-.brand p {
-  font-size: 13px;
-  color: #909399;
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
 }
 
 .steps {
@@ -319,21 +383,31 @@ onBeforeUnmount(clearCountdown)
   margin-top: 24px;
 }
 
+.actions-end {
+  justify-content: flex-end;
+}
+
 .tag-hint {
-  color: #f56c6c;
-  font-size: 12px;
   margin-top: 12px;
+  color: #b42318;
+  font-size: 12px;
 }
 
-.footer-link {
-  margin-top: 20px;
-  text-align: center;
-  font-size: 13px;
-  color: #909399;
+@media (max-width: 960px) {
+  .register-shell {
+    grid-template-columns: 1fr;
+  }
 }
 
-.footer-link a {
-  color: #409eff;
-  text-decoration: none;
+@media (max-width: 640px) {
+  .register-page {
+    padding: 16px;
+  }
+
+  .copy-links,
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

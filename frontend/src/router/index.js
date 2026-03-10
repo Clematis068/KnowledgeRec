@@ -4,6 +4,11 @@ import { useAuthStore } from '../stores/auth'
 
 const routes = [
   {
+    path: '/',
+    name: 'Home',
+    component: () => import('../views/IndexPage.vue'),
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('../views/LoginPage.vue'),
@@ -16,7 +21,6 @@ const routes = [
   {
     path: '/',
     component: AppLayout,
-    redirect: '/recommend',
     children: [
       {
         path: 'recommend',
