@@ -26,3 +26,6 @@ backend/.vite/
 
 skills/
 skills-lock.json
+
+# Local docs notes
+docs/mondai.md
