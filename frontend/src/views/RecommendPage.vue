@@ -1,82 +1,132 @@
 <template>
   <div class="recommend-page">
-    <div class="page-header">
-      <div class="header-left">
-        <el-icon :size="20"><Star /></el-icon>
-        <span class="header-title">社区首页</span>
-        <el-tag size="small" type="info">
-          {{ isOwnSelection ? '我的视角' : `演示用户 #${selectedUserId || '-'}` }}
-        </el-tag>
+    <section class="hero-section">
+      <div class="hero-copy">
+        <span class="hero-kicker">Recommend</span>
+        <h1>社区首页</h1>
+        <p>{{ heroDescription }}</p>
+
+        <div class="hero-stats">
+          <article class="stat-card">
+            <strong>{{ recommendations.length }}</strong>
+            <span>推荐</span>
+          </article>
+          <article class="stat-card">
+            <strong>{{ followingPosts.length }}</strong>
+            <span>关注</span>
+          </article>
+          <article class="stat-card">
+            <strong>{{ latestPosts.length }}</strong>
+            <span>最新</span>
+          </article>
+        </div>
       </div>
-      <div class="header-right">
-        <el-button
-          text
-          :icon="View"
-          :disabled="activeFeed !== 'recommend'"
-          @click="showDebugPanel = true"
-        >
-          Debug
-        </el-button>
-        <el-button text :icon="Operation" @click="showSettings = !showSettings">
-          调参
-        </el-button>
-        <el-button type="primary" :icon="Refresh" :loading="loading" @click="fetchCurrentFeed">
-          刷新
-        </el-button>
+
+      <div class="hero-side">
+        <div class="hero-note">
+          <span class="note-label">Mode</span>
+          <h3>{{ currentFeedTitle }}</h3>
+          <p>{{ currentFeedDescription }}</p>
+        </div>
+        <div class="hero-actions">
+          <el-button type="primary" :icon="Refresh" :loading="loading" @click="fetchCurrentFeed">
+            刷新
+          </el-button>
+          <el-button plain :icon="Operation" @click="showSettings = !showSettings">
+            {{ showSettings ? '收起调参' : '调参' }}
+          </el-button>
+          <el-button
+            text
+            :icon="View"
+            :disabled="activeFeed !== 'recommend'"
+            @click="showDebugPanel = true"
+          >
+            Debug 面板
+          </el-button>
+        </div>
       </div>
+    </section>
+
+    <div class="recommend-shell">
+      <section class="feed-column">
+        <div class="toolbar-card">
+          <div>
+            <span class="toolbar-kicker">Feed</span>
+            <h2>内容流</h2>
+          </div>
+          <el-tag size="small" effect="plain" class="selection-tag">
+            {{ isOwnSelection ? '我的视角' : `演示用户 #${selectedUserId || '-'}` }}
+          </el-tag>
+        </div>
+
+        <el-card v-show="showSettings" class="settings-panel" shadow="never">
+          <el-form :inline="true" size="small" class="settings-form">
+            <el-form-item label="演示用户">
+              <UserSelector v-model="selectedUserId" />
+            </el-form-item>
+            <el-form-item label="融合权重">
+              <WeightSlider @update:weights="onWeightsChange" />
+            </el-form-item>
+            <el-form-item label="数量">
+              <el-input-number v-model="topN" :min="5" :max="50" :step="5" />
+            </el-form-item>
+            <el-form-item label="LLM重排">
+              <el-switch v-model="enableLlm" active-text="开" inactive-text="关" />
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <div class="tabs-card">
+          <el-tabs v-model="activeFeed" class="feed-tabs" @tab-change="handleTabChange">
+            <el-tab-pane label="推荐" name="recommend" />
+            <el-tab-pane label="关注" name="following" />
+            <el-tab-pane label="最新" name="latest" />
+          </el-tabs>
+        </div>
+
+        <div v-if="loading" class="loading-area">
+          <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+          <p>{{ loadingText }}</p>
+        </div>
+
+        <template v-else-if="activeFeed === 'recommend'">
+          <div v-if="recommendations.length" class="result-area">
+            <RecCard
+              v-for="item in recommendations"
+              :key="item.post_id"
+              :item="item"
+              :allow-feedback="isOwnSelection"
+              @dislike="handleDislike"
+              @show-reason="openReason"
+            />
+          </div>
+          <el-empty v-else description="暂无推荐结果" />
+        </template>
+
+        <template v-else>
+          <div v-if="feedPosts.length" class="result-area">
+            <PostCard v-for="post in feedPosts" :key="post.id" :post="post" />
+          </div>
+          <el-empty
+            v-else
+            :description="activeFeed === 'following' ? '暂无关注内容' : '暂无最新帖子'"
+          />
+        </template>
+      </section>
+
+      <aside class="insight-column">
+        <el-card class="insight-card" shadow="never">
+          <span class="insight-kicker">Status</span>
+          <h3>{{ currentFeedTitle }}</h3>
+          <p>{{ currentFeedDescription }}</p>
+          <div class="insight-pills">
+            <span class="insight-pill">{{ selectionLabel }}</span>
+            <span class="insight-pill">Top {{ topN }}</span>
+            <span class="insight-pill">{{ enableLlm ? 'LLM 开' : 'LLM 关' }}</span>
+          </div>
+        </el-card>
+      </aside>
     </div>
-
-    <el-card v-show="showSettings" class="settings-panel">
-      <el-form :inline="true" size="small">
-        <el-form-item label="演示用户">
-          <UserSelector v-model="selectedUserId" />
-        </el-form-item>
-        <el-form-item label="融合权重">
-          <WeightSlider @update:weights="onWeightsChange" />
-        </el-form-item>
-        <el-form-item label="数量">
-          <el-input-number v-model="topN" :min="5" :max="50" :step="5" />
-        </el-form-item>
-        <el-form-item label="LLM重排">
-          <el-switch v-model="enableLlm" active-text="开" inactive-text="关" />
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <el-tabs v-model="activeFeed" class="feed-tabs" @tab-change="handleTabChange">
-      <el-tab-pane label="推荐" name="recommend" />
-      <el-tab-pane label="关注" name="following" />
-      <el-tab-pane label="最新" name="latest" />
-    </el-tabs>
-
-    <div v-if="loading" class="loading-area">
-      <el-icon class="is-loading" :size="32"><Loading /></el-icon>
-      <p>{{ loadingText }}</p>
-    </div>
-
-    <template v-else-if="activeFeed === 'recommend'">
-      <div v-if="recommendations.length" class="result-area">
-        <RecCard
-          v-for="item in recommendations"
-          :key="item.post_id"
-          :item="item"
-          :allow-feedback="isOwnSelection"
-          @dislike="handleDislike"
-          @show-reason="openReason"
-        />
-      </div>
-      <el-empty v-else description="暂无推荐结果，试试调整参数或切换演示用户" />
-    </template>
-
-    <template v-else>
-      <div v-if="feedPosts.length" class="result-area">
-        <PostCard v-for="post in feedPosts" :key="post.id" :post="post" />
-      </div>
-      <el-empty
-        v-else
-        :description="activeFeed === 'following' ? '你还没有关注内容，先去逛逛用户页吧' : '暂无最新帖子'"
-      />
-    </template>
 
     <RecReasonDialog
       v-model="reasonDialogVisible"
@@ -105,7 +155,7 @@ const authStore = useAuthStore()
 
 const activeFeed = ref('recommend')
 const topN = ref(20)
-const weights = ref({ cf: 0.35, graph: 0.35, semantic: 0.30 })
+const weights = ref({ cf: 0.35, graph: 0.35, semantic: 0.3 })
 const loading = ref(false)
 const loadingText = ref('正在加载内容...')
 const showSettings = ref(false)
@@ -126,6 +176,30 @@ const feedPosts = computed(() => (
   activeFeed.value === 'following' ? followingPosts.value : latestPosts.value
 ))
 
+const heroDescription = computed(() => (
+  authStore.username ? `${authStore.username}，这里是你的内容入口。` : '这里是社区内容入口。'
+))
+
+const currentFeedTitle = computed(() => {
+  if (activeFeed.value === 'recommend') return '推荐流'
+  if (activeFeed.value === 'following') return '关注流'
+  return '最新流'
+})
+
+const currentFeedDescription = computed(() => {
+  if (activeFeed.value === 'recommend') {
+    return isOwnSelection.value ? '优先看最相关内容。' : `当前查看用户 #${selectedUserId.value || '-'} 的结果。`
+  }
+  if (activeFeed.value === 'following') {
+    return '只看你关注的更新。'
+  }
+  return '快速扫最新内容。'
+})
+
+const selectionLabel = computed(() => (
+  isOwnSelection.value ? '我的推荐' : `演示用户 #${selectedUserId.value || '-'}`
+))
+
 function onWeightsChange(value) {
   weights.value = value
 }
@@ -134,7 +208,7 @@ async function fetchRecommendations() {
   if (!selectedUserId.value) return
 
   loadingText.value = isOwnSelection.value
-    ? '正在为你计算个性化推荐...'
+    ? '正在为你计算推荐...'
     : `正在生成用户 #${selectedUserId.value} 的推荐结果...`
   loading.value = true
 
@@ -233,56 +307,201 @@ onMounted(() => {
 
 <style scoped>
 .recommend-page {
-  max-width: 900px;
-  margin: 0 auto;
+  display: grid;
+  gap: 20px;
 }
 
-.page-header {
+.hero-section,
+.toolbar-card,
+.tabs-card {
+  border: 1px solid rgba(124, 58, 237, 0.12);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.hero-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 18px;
+  padding: 28px;
+}
+
+.hero-kicker,
+.toolbar-kicker,
+.insight-kicker,
+.note-label {
+  display: inline-flex;
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kr-primary);
+}
+
+.hero-copy h1,
+.toolbar-card h2,
+.insight-card h3,
+.hero-note h3 {
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.hero-copy h1 {
+  font-size: clamp(2.8rem, 5vw, 4.2rem);
+}
+
+.hero-copy p,
+.hero-note p,
+.insight-card p {
+  color: var(--kr-text-soft);
+  line-height: 1.7;
+}
+
+.hero-copy p {
+  margin-top: 14px;
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.stat-card,
+.hero-note,
+.insight-card {
+  padding: 18px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(124, 58, 237, 0.08);
+}
+
+.stat-card strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.stat-card span {
+  color: var(--kr-text-soft);
+}
+
+.hero-side {
+  display: grid;
+  gap: 14px;
+}
+
+.hero-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.recommend-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+}
+
+.feed-column,
+.insight-column {
+  min-width: 0;
+}
+
+.toolbar-card {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
-  padding: 12px 0;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 22px 24px;
+  margin-bottom: 14px;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #303133;
-}
-
-.header-title {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.selection-tag {
+  border-color: rgba(124, 58, 237, 0.12);
+  color: var(--kr-primary-strong);
+  background: rgba(124, 58, 237, 0.08);
 }
 
 .settings-panel {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+
+.tabs-card {
+  padding: 0 18px;
+  margin-bottom: 14px;
 }
 
 .feed-tabs {
-  margin-bottom: 12px;
+  margin-bottom: -1px;
 }
 
 .loading-area {
-  text-align: center;
-  padding: 80px 0;
-  color: #909399;
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  color: var(--kr-text-muted);
 }
 
 .loading-area p {
   margin-top: 12px;
-  font-size: 14px;
 }
 
 .result-area {
   min-height: 180px;
+}
+
+.insight-column {
+  position: sticky;
+  top: 96px;
+}
+
+.insight-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.insight-pill {
+  display: inline-flex;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--kr-primary-strong);
+  background: rgba(124, 58, 237, 0.08);
+}
+
+@media (max-width: 1180px) {
+  .hero-section,
+  .recommend-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .insight-column {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero-section,
+  .toolbar-card {
+    padding: 20px;
+  }
+
+  .hero-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

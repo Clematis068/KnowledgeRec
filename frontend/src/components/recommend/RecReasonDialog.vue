@@ -1,16 +1,27 @@
 <template>
-  <el-dialog
+  <el-drawer
     v-model="visible"
-    title="推荐理由"
-    width="500px"
-    :close-on-click-modal="true"
+    title="推荐解释"
+    direction="rtl"
+    size="min(460px, calc(100vw - 24px))"
+    :lock-scroll="false"
+    destroy-on-close
+    class="reason-drawer"
   >
     <div v-if="loading" class="loading-area">
       <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-      <span style="margin-left: 8px">正在生成推荐理由...</span>
+      <span class="loading-text">正在生成推荐理由...</span>
     </div>
-    <div v-else class="reason-text">{{ reason }}</div>
-  </el-dialog>
+    <div v-else class="reason-panel">
+      <div class="reason-head">
+        <span class="reason-kicker">Why this post</span>
+        <h3>推荐给你的原因</h3>
+      </div>
+      <div class="reason-scroll">
+        <div class="reason-text">{{ reason }}</div>
+      </div>
+    </div>
+  </el-drawer>
 </template>
 
 <script setup>
@@ -51,17 +62,58 @@ watch(visible, (val) => {
 </script>
 
 <style scoped>
+:deep(.reason-drawer) {
+  max-width: calc(100vw - 24px);
+}
+
+:deep(.reason-drawer .el-drawer__body) {
+  padding-top: 0;
+  overflow: auto;
+}
+
 .loading-area {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  color: #909399;
+  padding: 24px;
+  color: var(--kr-text-soft);
+}
+
+.loading-text {
+  margin-left: 8px;
+}
+
+.reason-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.reason-head h3 {
+  margin: 8px 0 0;
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.reason-kicker {
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kr-primary);
+}
+
+.reason-scroll {
+  max-height: calc(100vh - 170px);
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .reason-text {
-  line-height: 1.8;
+  line-height: 1.9;
   font-size: 14px;
-  padding: 8px 0;
+  color: var(--kr-text);
+  white-space: pre-wrap;
 }
 </style>

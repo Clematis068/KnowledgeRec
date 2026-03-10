@@ -61,34 +61,44 @@ function formatScore(value) {
 <template>
   <el-drawer
     :model-value="visible"
-    title="推荐 Debug 面板"
-    size="460px"
+    title="推荐 Debug"
+    direction="rtl"
+    size="min(620px, calc(100vw - 24px))"
     destroy-on-close
+    :lock-scroll="false"
+    class="debug-drawer"
     @close="closePanel"
   >
     <div class="debug-panel">
+      <div class="debug-head">
+        <div>
+          <span class="panel-kicker">Realtime Debug</span>
+          <h2>推荐过程面板</h2>
+        </div>
+        <el-tag size="small" type="primary">{{ stageLabel }}</el-tag>
+      </div>
+
       <el-alert
         type="info"
         :closable="false"
         show-icon
-        title="这里展示当前推荐请求的实时调试信息，包括权重、候选池和融合结果。"
+        title="展示当前请求的权重、候选池、融合结果和最终输出。"
       />
 
       <el-card shadow="never" class="panel-card">
         <template #header>
           <div class="panel-header">
             <span>当前概况</span>
-            <el-tag size="small" type="primary">{{ stageLabel }}</el-tag>
           </div>
         </template>
 
         <div v-if="debug" class="overview-grid">
           <div class="metric-item">
-            <span class="metric-label">融合前结果</span>
+            <span class="metric-label">融合前</span>
             <span class="metric-value">{{ debug.result_count_before_filter || 0 }}</span>
           </div>
           <div class="metric-item">
-            <span class="metric-label">过滤后结果</span>
+            <span class="metric-label">过滤后</span>
             <span class="metric-value">{{ debug.result_count_after_filter || 0 }}</span>
           </div>
           <div class="metric-item">
@@ -103,7 +113,7 @@ function formatScore(value) {
         <template #header>
           <div class="panel-header">
             <span>权重分配</span>
-            <span class="panel-tip">基础权重 / 实际生效权重</span>
+            <span class="panel-tip">基础 / 实际</span>
           </div>
         </template>
 
@@ -124,7 +134,7 @@ function formatScore(value) {
         <template #header>
           <div class="panel-header">
             <span>三路候选池</span>
-            <span class="panel-tip">展示每一路 top 5 备选</span>
+            <span class="panel-tip">每路 top 5</span>
           </div>
         </template>
 
@@ -151,7 +161,7 @@ function formatScore(value) {
                 <span class="sample-score">{{ formatScore(sample.score) }}</span>
               </div>
               <div class="sample-meta">
-                <el-tag v-if="sample.selected" size="small" type="warning">入选最终结果</el-tag>
+                <el-tag v-if="sample.selected" size="small" type="warning">入选</el-tag>
                 <span v-else class="sample-alt">备选</span>
               </div>
             </div>
@@ -164,7 +174,7 @@ function formatScore(value) {
         <template #header>
           <div class="panel-header">
             <span>融合预览</span>
-            <span class="panel-tip">先融合，再做负反馈过滤</span>
+            <span class="panel-tip">过滤前</span>
           </div>
         </template>
 
@@ -190,7 +200,7 @@ function formatScore(value) {
         <template #header>
           <div class="panel-header">
             <span>最终输出</span>
-            <span class="panel-tip">已考虑负反馈/屏蔽</span>
+            <span class="panel-tip">过滤后</span>
           </div>
         </template>
 
@@ -214,14 +224,48 @@ function formatScore(value) {
 </template>
 
 <style scoped>
+:deep(.debug-drawer) {
+  max-width: calc(100vw - 24px);
+}
+
+:deep(.debug-drawer .el-drawer__body) {
+  overflow: auto;
+  padding-top: 0;
+}
+
 .debug-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding-bottom: 12px;
+}
+
+.debug-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-kicker {
+  display: inline-flex;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kr-primary);
+}
+
+.debug-head h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
 }
 
 .panel-card {
-  border-radius: 12px;
+  border-radius: 18px;
 }
 
 .panel-header {
@@ -229,18 +273,18 @@ function formatScore(value) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .panel-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--kr-text-muted);
   font-weight: 400;
 }
 
 .overview-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -248,20 +292,20 @@ function formatScore(value) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 10px;
+  padding: 14px;
+  background: rgba(124, 58, 237, 0.04);
+  border-radius: 14px;
 }
 
 .metric-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--kr-text-muted);
 }
 
 .metric-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--kr-text);
 }
 
 .weight-row,
@@ -284,10 +328,11 @@ function formatScore(value) {
 
 .weight-row {
   padding: 10px 0;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.08);
 }
 
-.weight-row:last-child {
+.weight-row:last-child,
+.route-section:last-child {
   border-bottom: none;
 }
 
@@ -305,21 +350,16 @@ function formatScore(value) {
 }
 
 .weight-arrow {
-  color: #c0c4cc;
+  color: var(--kr-text-muted);
 }
 
 .weight-used {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .route-section {
   padding: 12px 0;
-  border-bottom: 1px solid #f0f2f5;
-}
-
-.route-section:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.08);
 }
 
 .sample-list {
@@ -332,39 +372,56 @@ function formatScore(value) {
 .sample-item {
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
-  padding: 10px 12px;
-  background: #fafafa;
-  border-radius: 10px;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(124, 58, 237, 0.04);
+  border-radius: 14px;
+}
+
+.sample-main {
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .sample-title {
-  color: #303133;
-  font-weight: 500;
+  color: var(--kr-text);
+  font-weight: 600;
+  line-height: 1.6;
   text-decoration: none;
 }
 
 .sample-title:hover {
-  color: #409eff;
+  color: var(--kr-primary);
 }
 
 .sample-score {
+  flex-shrink: 0;
   font-family: monospace;
-  color: #606266;
+  color: var(--kr-text-soft);
 }
 
 .sample-meta,
-.preview-breakdown {
-  font-size: 12px;
-  color: #909399;
-}
-
+.preview-breakdown,
+.route-count,
 .sample-alt {
-  color: #909399;
+  font-size: 12px;
+  color: var(--kr-text-muted);
 }
 
-.route-count {
-  font-size: 12px;
-  color: #909399;
+.preview-breakdown {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sample-main,
+  .route-summary,
+  .debug-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>
