@@ -6,13 +6,14 @@ from app.utils.content_filter import get_blocked_author_ids, get_blocked_domain_
 
 from .cf_engine import CFEngine
 from .graph_engine import GraphEngine
+from .hot_engine import HotEngine
 from .semantic_engine import SemanticEngine
 from .fusion import FusionEngine
 
 USER_STAGE_WEIGHTS = {
-    'cold': {'cf': 0.10, 'graph': 0.45, 'semantic': 0.45},
-    'warm': {'cf': 0.25, 'graph': 0.40, 'semantic': 0.35},
-    'active': {'cf': 0.45, 'graph': 0.30, 'semantic': 0.25},
+    'cold': {'cf': 0.10, 'graph': 0.45, 'semantic': 0.45, 'hot': 0.00},
+    'warm': {'cf': 0.25, 'graph': 0.40, 'semantic': 0.35, 'hot': 0.00},
+    'active': {'cf': 0.45, 'graph': 0.30, 'semantic': 0.25, 'hot': 0.00},
 }
 
 
@@ -22,18 +23,20 @@ class RecommendationEngine:
         self.cf = CFEngine()
         self.graph = GraphEngine()
         self.semantic = SemanticEngine()
+        self.hot = HotEngine()
         self.fusion = FusionEngine()
 
-    def recommend(self, user_id, top_n=20, enable_llm=True, weights=None):
+    def recommend(self, user_id, top_n=20, enable_llm=True, enable_hot=True, weights=None):
         results, _ = self.recommend_with_debug(
             user_id,
             top_n=top_n,
             enable_llm=enable_llm,
+            enable_hot=enable_hot,
             weights=weights,
         )
         return results
 
-    def recommend_with_debug(self, user_id, top_n=20, enable_llm=True, weights=None):
+    def recommend_with_debug(self, user_id, top_n=20, enable_llm=True, enable_hot=True, weights=None):
         """
         完整三路融合推荐
         1. 协同过滤 -> cf_scores
@@ -53,11 +56,15 @@ class RecommendationEngine:
             enable_llm_rerank=enable_llm,
         )
 
+        # Pipeline D: 热门召回，缓解冷启动和候选不足
+        hot_scores = self.hot.recommend(user_id) if enable_hot else {}
+
         resolved_weights, debug_info = self._resolve_weights(
             user_id,
             cf_scores,
             graph_scores,
             semantic_scores,
+            hot_scores,
             requested_weights=weights,
         )
 
@@ -65,18 +72,21 @@ class RecommendationEngine:
             cf_scores,
             graph_scores,
             semantic_scores,
+            hot_scores,
             top_n,
             weights=resolved_weights,
         )
         final_results = self._apply_negative_feedback(user_id, results, top_n)
         final_post_ids = {item['post_id'] for item in final_results}
         debug_info['negative_feedback_applied'] = True
+        debug_info['hot_enabled'] = bool(enable_hot)
         debug_info['result_count_before_filter'] = len(results)
         debug_info['result_count_after_filter'] = len(final_results)
         debug_info['route_samples'] = {
             'cf': self._build_route_samples(cf_scores, final_post_ids),
             'graph': self._build_route_samples(graph_scores, final_post_ids),
             'semantic': self._build_route_samples(semantic_scores, final_post_ids),
+            'hot': self._build_route_samples(hot_scores, final_post_ids),
         }
         debug_info['fusion_preview'] = self._build_result_preview(results)
         debug_info['final_preview'] = self._build_result_preview(final_results)
@@ -151,14 +161,30 @@ class RecommendationEngine:
         rescored_results.sort(key=lambda result: -result['final_score'])
         return rescored_results[:top_n]
 
-    def _resolve_weights(self, user_id, cf_scores, graph_scores, semantic_scores, requested_weights=None):
+    def _resolve_weights(self, user_id, cf_scores, graph_scores, semantic_scores, hot_scores, requested_weights=None):
         stage = self._get_user_stage(user_id)
-        base_weights = requested_weights or USER_STAGE_WEIGHTS[stage]
+        if requested_weights:
+            hot_weight = USER_STAGE_WEIGHTS[stage].get('hot', 0.0)
+            normalized_requested = self.fusion._normalize_weights({
+                'cf': requested_weights.get('cf', 0.0),
+                'graph': requested_weights.get('graph', 0.0),
+                'semantic': requested_weights.get('semantic', 0.0),
+            })
+            remaining_weight = max(1.0 - hot_weight, 0.0)
+            base_weights = {
+                'cf': normalized_requested['cf'] * remaining_weight,
+                'graph': normalized_requested['graph'] * remaining_weight,
+                'semantic': normalized_requested['semantic'] * remaining_weight,
+                'hot': hot_weight,
+            }
+        else:
+            base_weights = USER_STAGE_WEIGHTS[stage]
         normalized = self.fusion._normalize_weights(base_weights)
         availability = {
             'cf': bool(cf_scores),
             'graph': bool(graph_scores),
             'semantic': bool(semantic_scores),
+            'hot': bool(hot_scores),
         }
 
         available_names = [name for name, available in availability.items() if available]
@@ -172,6 +198,7 @@ class RecommendationEngine:
                     'cf': len(cf_scores),
                     'graph': len(graph_scores),
                     'semantic': len(semantic_scores),
+                    'hot': len(hot_scores),
                 },
             }
 
@@ -207,6 +234,7 @@ class RecommendationEngine:
                 'cf': len(cf_scores),
                 'graph': len(graph_scores),
                 'semantic': len(semantic_scores),
+                'hot': len(hot_scores),
             },
         }
         return used_weights, debug_info
@@ -242,6 +270,7 @@ class RecommendationEngine:
                 'cf_score': round(item.get('cf_score', 0.0), 4),
                 'graph_score': round(item.get('graph_score', 0.0), 4),
                 'semantic_score': round(item.get('semantic_score', 0.0), 4),
+                'hot_score': round(item.get('hot_score', 0.0), 4),
                 'negative_penalty': round(item.get('negative_penalty', 0.0), 4),
             })
         return preview

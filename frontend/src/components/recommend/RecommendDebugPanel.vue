@@ -5,6 +5,7 @@ const ROUTE_META = {
   cf: { label: 'CF 协同过滤', color: '#409eff' },
   graph: { label: 'Graph 图谱', color: '#67c23a' },
   semantic: { label: 'Semantic 语义', color: '#e6a23c' },
+  hot: { label: 'Hot 热门召回', color: '#f56c6c' },
 }
 
 const STAGE_LABELS = {
@@ -21,7 +22,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible'])
 
 const weightRows = computed(() => (
-  ['cf', 'graph', 'semantic'].map((key) => ({
+  ['cf', 'graph', 'semantic', 'hot'].map((key) => ({
     key,
     label: ROUTE_META[key].label,
     color: ROUTE_META[key].color,
@@ -31,7 +32,7 @@ const weightRows = computed(() => (
 ))
 
 const routeRows = computed(() => (
-  ['cf', 'graph', 'semantic'].map((key) => ({
+  ['cf', 'graph', 'semantic', 'hot'].map((key) => ({
     key,
     label: ROUTE_META[key].label,
     color: ROUTE_META[key].color,
@@ -190,6 +191,7 @@ function formatScore(value) {
               <span>CF {{ formatScore(item.cf_score) }}</span>
               <span>Graph {{ formatScore(item.graph_score) }}</span>
               <span>Semantic {{ formatScore(item.semantic_score) }}</span>
+              <span>Hot {{ formatScore(item.hot_score) }}</span>
             </div>
           </div>
         </div>

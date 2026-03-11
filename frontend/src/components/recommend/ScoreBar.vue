@@ -15,6 +15,11 @@
       :style="{ width: pct(semanticScore) }"
       :title="`Semantic: ${semanticScore.toFixed(4)}`"
     />
+    <div
+      class="segment hot"
+      :style="{ width: pct(hotScore) }"
+      :title="`Hot: ${hotScore.toFixed(4)}`"
+    />
   </div>
 </template>
 
@@ -25,9 +30,12 @@ const props = defineProps({
   cfScore: { type: Number, default: 0 },
   graphScore: { type: Number, default: 0 },
   semanticScore: { type: Number, default: 0 },
+  hotScore: { type: Number, default: 0 },
 })
 
-const total = computed(() => props.cfScore + props.graphScore + props.semanticScore || 1)
+const total = computed(() => (
+  props.cfScore + props.graphScore + props.semanticScore + props.hotScore || 1
+))
 
 function pct(val) {
   return ((val / total.value) * 100).toFixed(1) + '%'
@@ -51,4 +59,5 @@ function pct(val) {
 .cf { background: #409eff; }
 .graph { background: #67c23a; }
 .semantic { background: #e6a23c; }
+.hot { background: #f56c6c; }
 </style>

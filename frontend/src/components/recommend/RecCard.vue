@@ -18,12 +18,14 @@
       :cf-score="item.cf_score || 0"
       :graph-score="item.graph_score || 0"
       :semantic-score="item.semantic_score || 0"
+      :hot-score="item.hot_score || 0"
     />
 
     <div class="score-legend">
       <span class="legend cf">CF {{ (item.cf_score || 0).toFixed(3) }}</span>
       <span class="legend graph">Graph {{ (item.graph_score || 0).toFixed(3) }}</span>
       <span class="legend semantic">Semantic {{ (item.semantic_score || 0).toFixed(3) }}</span>
+      <span class="legend hot">Hot {{ (item.hot_score || 0).toFixed(3) }}</span>
     </div>
 
     <div class="card-footer">
@@ -149,6 +151,10 @@ const displayScore = computed(() => {
 
 .semantic::before {
   background: #e6a23c;
+}
+
+.hot::before {
+  background: #f56c6c;
 }
 
 .card-footer {

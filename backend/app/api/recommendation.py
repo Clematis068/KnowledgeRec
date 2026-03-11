@@ -13,6 +13,7 @@ def get_recommendations(user_id):
     """获取用户的个性化推荐"""
     top_n = request.args.get('top_n', 20, type=int)
     enable_llm = request.args.get('enable_llm', 'true').lower() == 'true'
+    enable_hot = request.args.get('enable_hot', 'true').lower() == 'true'
     debug = request.args.get('debug', 'false').lower() == 'true'
 
     # 可选自定义权重
@@ -28,6 +29,7 @@ def get_recommendations(user_id):
             user_id,
             top_n=top_n,
             enable_llm=enable_llm,
+            enable_hot=enable_hot,
             weights=weights,
         )
 
@@ -54,6 +56,7 @@ def get_my_recommendations():
     user_id = g.current_user.id
     top_n = request.args.get('top_n', 20, type=int)
     enable_llm = request.args.get('enable_llm', 'true').lower() == 'true'
+    enable_hot = request.args.get('enable_hot', 'true').lower() == 'true'
     debug = request.args.get('debug', 'false').lower() == 'true'
 
     w_cf = request.args.get('w_cf', type=float)
@@ -68,6 +71,7 @@ def get_my_recommendations():
             user_id,
             top_n=top_n,
             enable_llm=enable_llm,
+            enable_hot=enable_hot,
             weights=weights,
         )
         for item in results:
