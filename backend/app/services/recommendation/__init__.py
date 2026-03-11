@@ -11,9 +11,9 @@ from .semantic_engine import SemanticEngine
 from .fusion import FusionEngine
 
 USER_STAGE_WEIGHTS = {
-    'cold': {'cf': 0.10, 'graph': 0.45, 'semantic': 0.45, 'hot': 0.00},
-    'warm': {'cf': 0.25, 'graph': 0.40, 'semantic': 0.35, 'hot': 0.00},
-    'active': {'cf': 0.45, 'graph': 0.30, 'semantic': 0.25, 'hot': 0.00},
+    'cold': {'cf': 0.00, 'graph': 0.28, 'semantic': 0.30, 'hot': 0.42},
+    'warm': {'cf': 0.18, 'graph': 0.32, 'semantic': 0.28, 'hot': 0.22},
+    'active': {'cf': 0.40, 'graph': 0.27, 'semantic': 0.23, 'hot': 0.10},
 }
 
 

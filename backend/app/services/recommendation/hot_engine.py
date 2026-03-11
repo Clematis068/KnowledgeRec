@@ -10,9 +10,9 @@ from app.utils.helpers import min_max_normalize
 
 
 class HotEngine:
-    RECENT_WINDOW_DAYS = 30
-    TAG_MATCH_BONUS = 0.0
-    DOMAIN_MATCH_BONUS = 0.0
+    RECENT_WINDOW_DAYS = 45
+    TAG_MATCH_BONUS = 0.12
+    DOMAIN_MATCH_BONUS = 0.18
 
     def recommend(self, user_id=None, candidate_ids=None, top_n=200):
         stmt = db.select(Post)
