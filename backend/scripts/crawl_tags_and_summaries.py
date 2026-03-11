@@ -28,6 +28,10 @@ from app.models.tag import Tag
 from app.models.domain import Domain
 from app.models.user import User
 
+
+def count_rows(model):
+    return db.session.scalar(db.select(db.func.count()).select_from(model))
+
 WIKI_API = 'https://zh.wikipedia.org/w/api.php'
 WIKI_HEADERS = {'User-Agent': 'KnowledgeRec/1.0 (educational project)'}
 SE_API = 'https://api.stackexchange.com/2.3'
@@ -222,7 +226,7 @@ def llm_generate_summary(tag_name, domain_name):
 
 # ========== 数据库操作 ==========
 def get_or_create_tag(name, domain_id):
-    tag = Tag.query.filter_by(name=name, domain_id=domain_id).first()
+    tag = db.session.scalar(db.select(Tag).filter_by(name=name, domain_id=domain_id))
     if tag:
         return tag, False
     tag = Tag(name=name, domain_id=domain_id)
@@ -232,7 +236,7 @@ def get_or_create_tag(name, domain_id):
 
 
 def insert_post(title, content, summary, author_id, domain_id, tag_ids):
-    if Post.query.filter_by(title=title).first():
+    if db.session.scalar(db.select(Post).filter_by(title=title)):
         return False
     post = Post(
         title=title[:250], content=content or summary,
@@ -252,20 +256,20 @@ def insert_post(title, content, summary, author_id, domain_id, tag_ids):
 def main():
     app = create_app()
     with app.app_context():
-        users = User.query.all()
+        users = db.session.scalars(db.select(User)).all()
         if not users:
             print("错误: 数据库中没有用户")
             return
 
-        domains = Domain.query.all()
+        domains = db.session.scalars(db.select(Domain)).all()
         domain_map = {d.id: d.name for d in domains}
-        orig_tags = Tag.query.count()
-        orig_posts = Post.query.count()
+        orig_tags = count_rows(Tag)
+        orig_posts = count_rows(Post)
         stats = {'tags': 0, 'wiki': 0, 'se': 0, 'arxiv': 0, 'llm': 0}
 
         # ===== 1. LLM 生成子标签 =====
         print("===== 1/5 LLM 细化标签 =====")
-        all_tags = Tag.query.all()
+        all_tags = db.session.scalars(db.select(Tag)).all()
         for i, tag in enumerate(all_tags):
             subtags = llm_generate_subtags(domain_map[tag.domain_id], tag.name)
             for st in subtags:
@@ -278,11 +282,11 @@ def main():
             if (i + 1) % 20 == 0:
                 db.session.commit()
         db.session.commit()
-        print(f'  新增 {stats["tags"]} 个子标签 (总计 {Tag.query.count()})\n')
+        print(f'  新增 {stats["tags"]} 个子标签 (总计 {count_rows(Tag)})\n')
 
         # ===== 2. 维基百科 =====
         print("===== 2/5 维基百科知识摘要 =====")
-        all_tags = Tag.query.all()
+        all_tags = db.session.scalars(db.select(Tag)).all()
         for i, tag in enumerate(all_tags):
             summary = wiki_get_summary(tag.name)
             if summary:
@@ -354,9 +358,10 @@ def main():
 
         # ===== 4. arXiv =====
         print("===== 4/5 arXiv 论文摘要 =====")
-        stem_tags = Tag.query.join(Domain).filter(
-            Domain.name.in_(['计算机科学', '数学', '物理学', '生物学'])
-        ).all()
+        stmt = (db.select(Tag)
+                .join(Domain)
+                .filter(Domain.name.in_(['计算机科学', '数学', '物理学', '生物学'])))
+        stem_tags = db.session.scalars(stmt).all()
         sample = random.sample(stem_tags, min(50, len(stem_tags)))
         for tag in sample:
             papers = arxiv_search(tag.name, max_results=2)
@@ -376,7 +381,8 @@ def main():
         # ===== 5. LLM 补缺 =====
         print("===== 5/5 LLM 补充缺失标签 =====")
         covered = {r[1] for r in db.session.execute(post_tag.select()).fetchall()}
-        missing = [t for t in Tag.query.all() if t.id not in covered]
+        all_tags = db.session.scalars(db.select(Tag)).all()
+        missing = [t for t in all_tags if t.id not in covered]
         print(f'  还有 {len(missing)} 个标签无帖子，LLM补充...')
         for tag in missing:
             s = llm_generate_summary(tag.name, domain_map[tag.domain_id])
@@ -399,14 +405,14 @@ def main():
         print("===== 同步 Neo4j =====")
         try:
             from app.services.neo4j_service import neo4j_service
-            tags = Tag.query.all()
+            tags = db.session.scalars(db.select(Tag)).all()
             neo4j_service.run_write(
                 "UNWIND $items AS i MERGE (t:Tag {id: i.id}) SET t.name = i.name",
                 {"items": [{"id": t.id, "name": t.name} for t in tags]})
             neo4j_service.run_write(
                 "UNWIND $items AS i MATCH (t:Tag {id: i.tid}), (d:Domain {id: i.did}) MERGE (t)-[:BELONGS_TO]->(d)",
                 {"items": [{"tid": t.id, "did": t.domain_id} for t in tags]})
-            posts = Post.query.all()
+            posts = db.session.scalars(db.select(Post)).all()
             neo4j_service.run_write(
                 "UNWIND $items AS i MERGE (p:Post {id: i.id}) SET p.title = i.title, p.summary = i.summary",
                 {"items": [{"id": p.id, "title": p.title, "summary": p.summary} for p in posts]})
@@ -424,8 +430,8 @@ def main():
         # ===== 汇总 =====
         total_new = stats['wiki'] + stats['se'] + stats['arxiv'] + stats['llm']
         print(f'\n{"="*50}')
-        print(f'标签: {orig_tags} → {Tag.query.count()} (+{stats["tags"]})')
-        print(f'帖子: {orig_posts} → {Post.query.count()} (+{total_new})')
+        print(f'标签: {orig_tags} → {count_rows(Tag)} (+{stats["tags"]})')
+        print(f'帖子: {orig_posts} → {count_rows(Post)} (+{total_new})')
         print(f'  维基百科: {stats["wiki"]}  |  Stack Exchange: {stats["se"]}')
         print(f'  arXiv: {stats["arxiv"]}  |  LLM补充: {stats["llm"]}')
         print(f'{"="*50}')

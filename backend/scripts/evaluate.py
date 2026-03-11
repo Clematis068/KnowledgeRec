@@ -35,15 +35,15 @@ K_VALUES = [5, 10, 20]
 def split_train_test(test_ratio=0.2):
     """按时间划分训练/测试集：最近20%行为作为测试集"""
     print("划分训练/测试集...")
-    users = User.query.all()
+    users = db.session.scalars(db.select(User)).all()
     test_set = {}  # {user_id: set(post_ids)}
 
     for user in users:
-        behaviors = (UserBehavior.query
-                     .filter_by(user_id=user.id)
-                     .filter(UserBehavior.behavior_type.in_(['like', 'favorite']))
-                     .order_by(UserBehavior.created_at)
-                     .all())
+        stmt = (db.select(UserBehavior)
+                .filter_by(user_id=user.id)
+                .filter(UserBehavior.behavior_type.in_(['like', 'favorite']))
+                .order_by(UserBehavior.created_at))
+        behaviors = db.session.scalars(stmt).all()
         if len(behaviors) < 5:
             continue
 

@@ -133,7 +133,7 @@ class TagTaxonomyService:
         if not normalized_raw:
             return {"status": "ignored", "raw_name": raw_name, "tag": None}
 
-        direct_tag = Tag.query.filter_by(domain_id=domain_id, name=normalized_raw).first()
+        direct_tag = db.session.scalar(db.select(Tag).filter_by(domain_id=domain_id, name=normalized_raw))
         if direct_tag:
             self._ensure_tag_embedding(direct_tag)
             return {
@@ -143,7 +143,7 @@ class TagTaxonomyService:
                 "tag": direct_tag,
             }
 
-        alias = TagAlias.query.filter_by(domain_id=domain_id, name=normalized_raw).first()
+        alias = db.session.scalar(db.select(TagAlias).filter_by(domain_id=domain_id, name=normalized_raw))
         if alias:
             self._ensure_tag_embedding(alias.canonical_tag)
             return {
@@ -162,7 +162,7 @@ class TagTaxonomyService:
         ]
 
         for name in [normalized_name] + candidate_aliases:
-            tag = Tag.query.filter_by(domain_id=domain_id, name=name).first()
+            tag = db.session.scalar(db.select(Tag).filter_by(domain_id=domain_id, name=name))
             if tag:
                 self._upsert_aliases([normalized_raw] + candidate_aliases, domain_id, tag, source="llm-match")
                 return {
@@ -172,7 +172,7 @@ class TagTaxonomyService:
                     "tag": tag,
                 }
 
-            alias = TagAlias.query.filter_by(domain_id=domain_id, name=name).first()
+            alias = db.session.scalar(db.select(TagAlias).filter_by(domain_id=domain_id, name=name))
             if alias:
                 self._upsert_aliases([normalized_raw] + candidate_aliases, domain_id, alias.canonical_tag, source="llm-match")
                 return {
@@ -263,7 +263,7 @@ class TagTaxonomyService:
             return {"normalized_name": text, "aliases": [], "reason": ""}
 
     def _classify_domain(self, embedding, fallback_domain_id=None):
-        domains = Domain.query.order_by(Domain.id.asc()).all()
+        domains = db.session.scalars(db.select(Domain).order_by(Domain.id.asc())).all()
         if not domains:
             return {
                 "predicted_domain": None,
@@ -293,7 +293,8 @@ class TagTaxonomyService:
         }
 
     def _match_existing_tag_with_llm(self, tag_name, domain_id):
-        tags = Tag.query.filter_by(domain_id=domain_id).order_by(Tag.name.asc()).all()
+        stmt = db.select(Tag).filter_by(domain_id=domain_id).order_by(Tag.name.asc())
+        tags = db.session.scalars(stmt).all()
         if not tags:
             return {"tag": None, "score": 0.0, "reason": ""}
 
@@ -343,7 +344,7 @@ class TagTaxonomyService:
             normalized = self.normalize_text(name)
             if not normalized or normalized == canonical_tag.name:
                 continue
-            exists = TagAlias.query.filter_by(domain_id=domain_id, name=normalized).first()
+            exists = db.session.scalar(db.select(TagAlias).filter_by(domain_id=domain_id, name=normalized))
             if exists:
                 if exists.canonical_tag_id != canonical_tag.id:
                     exists.canonical_tag_id = canonical_tag.id
@@ -381,7 +382,7 @@ class TagTaxonomyService:
         return tag.embedding
 
     def _get_or_create_tag(self, domain_id, tag_name, embedding=None):
-        tag = Tag.query.filter_by(domain_id=domain_id, name=tag_name).first()
+        tag = db.session.scalar(db.select(Tag).filter_by(domain_id=domain_id, name=tag_name))
         if not tag:
             tag = Tag(name=tag_name, domain_id=domain_id, embedding=embedding)
             db.session.add(tag)

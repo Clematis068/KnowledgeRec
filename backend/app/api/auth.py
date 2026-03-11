@@ -73,9 +73,9 @@ def register():
     if gender and gender not in ('male', 'female', 'other'):
         return jsonify({'error': '性别参数不合法'}), 400
 
-    if User.query.filter_by(username=username).first():
+    if db.session.scalar(db.select(User).filter_by(username=username)):
         return jsonify({'error': '用户名已存在'}), 409
-    if User.query.filter_by(email=email).first():
+    if db.session.scalar(db.select(User).filter_by(email=email)):
         return jsonify({'error': '邮箱已被注册'}), 409
     if redis_service.get_value(_email_verified_key(email)) != '1':
         return jsonify({'error': '请先完成邮箱验证'}), 400
@@ -85,7 +85,8 @@ def register():
 
     # 绑定兴趣标签
     if tag_ids:
-        tags = Tag.query.filter(Tag.id.in_(tag_ids)).all()
+        stmt = db.select(Tag).filter(Tag.id.in_(tag_ids))
+        tags = db.session.scalars(stmt).all()
         user.interest_tags = tags
 
     db.session.add(user)
@@ -110,7 +111,7 @@ def send_email_code():
         return jsonify({'error': '邮箱不能为空'}), 400
     if not _is_valid_email(email):
         return jsonify({'error': '邮箱格式不正确'}), 400
-    if User.query.filter_by(email=email).first():
+    if db.session.scalar(db.select(User).filter_by(email=email)):
         return jsonify({'error': '邮箱已被注册'}), 409
 
     cooldown_key = _email_cooldown_key(email)
@@ -140,7 +141,7 @@ def send_reset_password_code():
     if not _is_valid_email(email):
         return jsonify({'error': '邮箱格式不正确'}), 400
 
-    user = User.query.filter_by(email=email).first()
+    user = db.session.scalar(db.select(User).filter_by(email=email))
     if not user:
         return jsonify({'error': '该邮箱尚未注册'}), 404
 
@@ -195,7 +196,7 @@ def verify_reset_password_code():
     if not _is_valid_email(email):
         return jsonify({'error': '邮箱格式不正确'}), 400
 
-    user = User.query.filter_by(email=email).first()
+    user = db.session.scalar(db.select(User).filter_by(email=email))
     if not user:
         return jsonify({'error': '该邮箱尚未注册'}), 404
 
@@ -226,7 +227,7 @@ def reset_password():
     if redis_service.get_value(_password_reset_verified_key(email)) != '1':
         return jsonify({'error': '请先完成邮箱验证'}), 400
 
-    user = User.query.filter_by(email=email).first()
+    user = db.session.scalar(db.select(User).filter_by(email=email))
     if not user:
         return jsonify({'error': '该邮箱尚未注册'}), 404
 
@@ -283,7 +284,7 @@ def login():
     if not username or not password:
         return jsonify({'error': '用户名和密码不能为空'}), 400
 
-    user = User.query.filter_by(username=username).first()
+    user = db.session.scalar(db.select(User).filter_by(username=username))
     if not user or not user.check_password(password):
         return jsonify({'error': '用户名或密码错误'}), 401
 
@@ -302,10 +303,11 @@ def get_me():
 @auth_bp.route('/tags', methods=['GET'])
 def get_registration_tags():
     """按领域分组的全部标签（注册页用）"""
-    domains = Domain.query.order_by(Domain.id.asc()).all()
+    domains = db.session.scalars(db.select(Domain).order_by(Domain.id.asc())).all()
     result = []
     for d in domains:
-        tags = Tag.query.filter_by(domain_id=d.id).order_by(Tag.name.asc()).all()
+        stmt = db.select(Tag).filter_by(domain_id=d.id).order_by(Tag.name.asc())
+        tags = db.session.scalars(stmt).all()
         result.append({
             'domain': d.to_dict(),
             'tags': [t.to_dict() for t in tags],
@@ -316,5 +318,5 @@ def get_registration_tags():
 @auth_bp.route('/domains', methods=['GET'])
 def get_domains():
     """全部一级领域（发帖、筛选等使用）"""
-    domains = Domain.query.order_by(Domain.id.asc()).all()
+    domains = db.session.scalars(db.select(Domain).order_by(Domain.id.asc())).all()
     return jsonify({'domains': [domain.to_dict() for domain in domains]})

@@ -32,7 +32,8 @@ def list_users():
     """用户列表(分页)"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    pagination = User.query.paginate(page=page, per_page=per_page)
+    stmt = db.select(User)
+    pagination = db.paginate(stmt, page=page, per_page=per_page)
     return jsonify({
         "users": [u.to_dict() for u in pagination.items],
         "total": pagination.total,
@@ -44,11 +45,11 @@ def list_users():
 def get_user_behaviors(user_id):
     """获取用户行为历史"""
     limit = request.args.get('limit', 50, type=int)
-    behaviors = (UserBehavior.query
-                 .filter_by(user_id=user_id)
-                 .order_by(UserBehavior.created_at.desc())
-                 .limit(limit)
-                 .all())
+    stmt = (db.select(UserBehavior)
+            .filter_by(user_id=user_id)
+            .order_by(UserBehavior.created_at.desc())
+            .limit(limit))
+    behaviors = db.session.scalars(stmt).all()
     return jsonify({"behaviors": [b.to_dict() for b in behaviors]})
 
 
@@ -66,7 +67,8 @@ def update_profile():
     if 'email' in data:
         user.email = data['email']
     if 'tag_ids' in data:
-        tags = Tag.query.filter(Tag.id.in_(data['tag_ids'])).all()
+        stmt = db.select(Tag).filter(Tag.id.in_(data['tag_ids']))
+        tags = db.session.scalars(stmt).all()
         user.interest_tags = tags
         user.interest_embedding = None
         user.interest_profile = (
@@ -92,9 +94,9 @@ def follow_user(target_id):
     if not target:
         return jsonify({"error": "用户不存在"}), 404
 
-    exists = UserFollow.query.filter_by(
+    exists = db.session.scalar(db.select(UserFollow).filter_by(
         follower_id=g.current_user.id, followed_id=target_id
-    ).first()
+    ))
     if exists:
         return jsonify({"message": "已关注"}), 200
 
@@ -120,9 +122,9 @@ def follow_user(target_id):
 @login_required
 def unfollow_user(target_id):
     """取消关注"""
-    follow = UserFollow.query.filter_by(
+    follow = db.session.scalar(db.select(UserFollow).filter_by(
         follower_id=g.current_user.id, followed_id=target_id
-    ).first()
+    ))
     if not follow:
         return jsonify({"error": "未关注"}), 404
 
@@ -145,9 +147,9 @@ def unfollow_user(target_id):
 @user_bp.route('/<int:user_id>/followers', methods=['GET'])
 def get_followers(user_id):
     """粉丝列表"""
-    follows = UserFollow.query.filter_by(followed_id=user_id).all()
+    follows = db.session.scalars(db.select(UserFollow).filter_by(followed_id=user_id)).all()
     user_ids = [f.follower_id for f in follows]
-    users = User.query.filter(User.id.in_(user_ids)).all() if user_ids else []
+    users = db.session.scalars(db.select(User).filter(User.id.in_(user_ids))).all() if user_ids else []
     return jsonify({
         "followers": [u.to_dict() for u in users],
         "count": len(users),
@@ -157,9 +159,9 @@ def get_followers(user_id):
 @user_bp.route('/<int:user_id>/following', methods=['GET'])
 def get_following(user_id):
     """关注列表"""
-    follows = UserFollow.query.filter_by(follower_id=user_id).all()
+    follows = db.session.scalars(db.select(UserFollow).filter_by(follower_id=user_id)).all()
     user_ids = [f.followed_id for f in follows]
-    users = User.query.filter(User.id.in_(user_ids)).all() if user_ids else []
+    users = db.session.scalars(db.select(User).filter(User.id.in_(user_ids))).all() if user_ids else []
     return jsonify({
         "following": [u.to_dict() for u in users],
         "count": len(users),
@@ -172,10 +174,10 @@ def get_user_posts(user_id):
     """获取用户发布的帖子"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    query = Post.query.filter_by(author_id=user_id).order_by(Post.created_at.desc())
+    stmt = db.select(Post).filter_by(author_id=user_id).order_by(Post.created_at.desc())
     if not g.current_user or g.current_user.id != user_id:
-        query = apply_post_visibility_query(query, g.current_user.id if g.current_user else None)
-    pagination = query.paginate(page=page, per_page=per_page)
+        stmt = apply_post_visibility_query(stmt, g.current_user.id if g.current_user else None)
+    pagination = db.paginate(stmt, page=page, per_page=per_page)
     return jsonify({
         "posts": [p.to_dict() for p in pagination.items],
         "total": pagination.total,
@@ -189,13 +191,13 @@ def get_user_favorites(user_id):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
 
-    fav_behaviors = (UserBehavior.query
+    stmt = (db.select(UserBehavior)
         .filter_by(user_id=user_id, behavior_type='favorite')
-        .order_by(UserBehavior.created_at.desc())
-        .paginate(page=page, per_page=per_page))
+        .order_by(UserBehavior.created_at.desc()))
+    fav_behaviors = db.paginate(stmt, page=page, per_page=per_page)
 
     post_ids = [b.post_id for b in fav_behaviors.items]
-    posts = Post.query.filter(Post.id.in_(post_ids)).all() if post_ids else []
+    posts = db.session.scalars(db.select(Post).filter(Post.id.in_(post_ids))).all() if post_ids else []
     posts = filter_posts(posts, g.current_user.id if g.current_user else None)
     post_map = {p.id: p for p in posts}
     ordered = [post_map[pid] for pid in post_ids if pid in post_map]
@@ -212,9 +214,9 @@ def get_follow_status(user_id):
     """当前用户是否关注了目标用户"""
     if not g.current_user:
         return jsonify({"is_following": False})
-    exists = UserFollow.query.filter_by(
+    exists = db.session.scalar(db.select(UserFollow).filter_by(
         follower_id=g.current_user.id, followed_id=user_id
-    ).first()
+    ))
     return jsonify({"is_following": exists is not None})
 
 
@@ -222,14 +224,12 @@ def get_follow_status(user_id):
 @login_required
 def get_blocked_authors():
     """获取当前用户已屏蔽的作者列表"""
-    blocked_rows = (
-        UserBlockedAuthor.query
-        .filter_by(user_id=g.current_user.id)
-        .order_by(UserBlockedAuthor.created_at.desc())
-        .all()
-    )
+    stmt = (db.select(UserBlockedAuthor)
+            .filter_by(user_id=g.current_user.id)
+            .order_by(UserBlockedAuthor.created_at.desc()))
+    blocked_rows = db.session.scalars(stmt).all()
     author_ids = [row.author_id for row in blocked_rows]
-    authors = User.query.filter(User.id.in_(author_ids)).all() if author_ids else []
+    authors = db.session.scalars(db.select(User).filter(User.id.in_(author_ids))).all() if author_ids else []
     author_map = {author.id: author for author in authors}
 
     return jsonify({
@@ -242,14 +242,12 @@ def get_blocked_authors():
 @login_required
 def get_blocked_domains():
     """获取当前用户已屏蔽的领域列表"""
-    blocked_rows = (
-        UserBlockedDomain.query
-        .filter_by(user_id=g.current_user.id)
-        .order_by(UserBlockedDomain.created_at.desc())
-        .all()
-    )
+    stmt = (db.select(UserBlockedDomain)
+            .filter_by(user_id=g.current_user.id)
+            .order_by(UserBlockedDomain.created_at.desc()))
+    blocked_rows = db.session.scalars(stmt).all()
     domain_ids = [row.domain_id for row in blocked_rows]
-    domains = Domain.query.filter(Domain.id.in_(domain_ids)).all() if domain_ids else []
+    domains = db.session.scalars(db.select(Domain).filter(Domain.id.in_(domain_ids))).all() if domain_ids else []
     domain_map = {domain.id: domain for domain in domains}
 
     return jsonify({
@@ -262,10 +260,10 @@ def get_blocked_domains():
 @login_required
 def remove_blocked_author(author_id):
     """取消屏蔽某个作者"""
-    blocked = UserBlockedAuthor.query.filter_by(
+    blocked = db.session.scalar(db.select(UserBlockedAuthor).filter_by(
         user_id=g.current_user.id,
         author_id=author_id,
-    ).first()
+    ))
     if not blocked:
         return jsonify({"error": "未屏蔽该作者"}), 404
 
@@ -288,10 +286,10 @@ def remove_blocked_author(author_id):
 @login_required
 def remove_blocked_domain(domain_id):
     """取消屏蔽某个领域"""
-    blocked = UserBlockedDomain.query.filter_by(
+    blocked = db.session.scalar(db.select(UserBlockedDomain).filter_by(
         user_id=g.current_user.id,
         domain_id=domain_id,
-    ).first()
+    ))
     if not blocked:
         return jsonify({"error": "未屏蔽该领域"}), 404
 

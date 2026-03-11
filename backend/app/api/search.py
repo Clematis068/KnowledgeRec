@@ -32,8 +32,8 @@ def search():
 def _search_authors(q, page, per_page):
     """按用户名搜索用户"""
     like_pattern = f'%{q}%'
-    query = User.query.filter(User.username.like(like_pattern))
-    pagination = query.paginate(page=page, per_page=per_page)
+    stmt = db.select(User).filter(User.username.like(like_pattern))
+    pagination = db.paginate(stmt, page=page, per_page=per_page)
     users = [{
         'id': u.id,
         'username': u.username,
@@ -46,12 +46,13 @@ def _search_posts(q, page, per_page):
     """搜索帖子：LIKE 筛选 + Embedding 语义排序"""
     # 1. MySQL LIKE 粗筛（title + content）
     like_pattern = f'%{q}%'
-    candidates = Post.query.filter(
+    stmt = db.select(Post).filter(
         db.or_(
             Post.title.like(like_pattern),
             Post.content.like(like_pattern),
         )
-    ).all()
+    )
+    candidates = db.session.scalars(stmt).all()
     candidates = filter_posts(candidates, g.current_user.id if g.current_user else None)
 
     # 2. 千问 Embedding 语义排序

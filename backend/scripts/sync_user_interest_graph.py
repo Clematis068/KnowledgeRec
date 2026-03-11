@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app import create_app
+from app import create_app, db
 from app.models.user import User
 from app.services.tag_taxonomy_service import tag_taxonomy_service
 
@@ -17,7 +17,7 @@ from app.services.tag_taxonomy_service import tag_taxonomy_service
 def main():
     app = create_app()
     with app.app_context():
-        users = User.query.all()
+        users = db.session.scalars(db.select(User)).all()
         for user in users:
             tag_taxonomy_service.sync_user_interest_tags(user)
         print(f"[DONE] 已同步 {len(users)} 个用户的兴趣标签/领域到 Neo4j")

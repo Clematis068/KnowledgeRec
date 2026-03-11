@@ -24,7 +24,7 @@ def upsert_domains():
     updated = 0
 
     for spec in FIXED_DOMAINS:
-        domain = Domain.query.filter_by(name=spec["name"]).first()
+        domain = db.session.scalar(db.select(Domain).filter_by(name=spec["name"]))
         if domain:
             domain.description = spec["description"]
             updated += 1
@@ -35,7 +35,7 @@ def upsert_domains():
 
     db.session.commit()
 
-    for domain in Domain.query.order_by(Domain.id.asc()).all():
+    for domain in db.session.scalars(db.select(Domain).order_by(Domain.id.asc())).all():
         tag_taxonomy_service.sync_domain_to_neo4j(domain)
 
     print(f"[OK] 领域已同步: 新增 {created}，更新 {updated}")
@@ -60,7 +60,7 @@ def generate_tags_for_domain(domain, per_domain):
 
 
 def upsert_tags(per_domain):
-    for domain in Domain.query.order_by(Domain.id.asc()).all():
+    for domain in db.session.scalars(db.select(Domain).order_by(Domain.id.asc())).all():
         try:
             tags = generate_tags_for_domain(domain, per_domain)
         except Exception as exc:
@@ -72,7 +72,7 @@ def upsert_tags(per_domain):
             name = tag_taxonomy_service.normalize_text(raw_tag)
             if not name:
                 continue
-            tag = Tag.query.filter_by(domain_id=domain.id, name=name).first()
+            tag = db.session.scalar(db.select(Tag).filter_by(domain_id=domain.id, name=name))
             if tag:
                 continue
             embedding = None

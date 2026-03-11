@@ -21,6 +21,10 @@ from app.taxonomy import FIXED_DOMAINS
 
 fake = Faker('zh_CN')
 
+
+def count_rows(model):
+    return db.session.scalar(db.select(db.func.count()).select_from(model))
+
 # ============================================================
 # 领域与标签定义
 # ============================================================
@@ -104,13 +108,13 @@ def generate_domains_and_tags():
             db.session.add(tag)
 
     db.session.commit()
-    print(f"  领域: {Domain.query.count()}, 标签: {Tag.query.count()}")
+    print(f"  领域: {count_rows(Domain)}, 标签: {count_rows(Tag)}")
 
 
 def generate_users(n=500):
     """生成用户，每个用户分配2-4个兴趣领域"""
     print(f"生成 {n} 个用户...")
-    domains = Domain.query.all()
+    domains = db.session.scalars(db.select(Domain)).all()
     users_data = []
 
     for i in range(n):
@@ -127,14 +131,15 @@ def generate_users(n=500):
         })
 
     db.session.commit()
-    print(f"  用户: {User.query.count()}")
+    print(f"  用户: {count_rows(User)}")
     return users_data
 
 
 def generate_posts(users_data, n=2000):
     """生成帖子，按用户兴趣领域分配"""
     print(f"生成 {n} 个帖子...")
-    all_tags = {d.id: list(d.tags) for d in Domain.query.all()}
+    domains = db.session.scalars(db.select(Domain)).all()
+    all_tags = {d.id: list(d.tags) for d in domains}
 
     for i in range(n):
         # 随机选一个用户及其兴趣领域
@@ -168,13 +173,13 @@ def generate_posts(users_data, n=2000):
             db.session.execute(stmt)
 
     db.session.commit()
-    print(f"  帖子: {Post.query.count()}")
+    print(f"  帖子: {count_rows(Post)}")
 
 
 def generate_behaviors(users_data, avg_per_user=100):
     """生成用户行为：60% browse, 20% like, 10% favorite, 10% comment"""
     print(f"生成用户行为(每人约{avg_per_user}条)...")
-    all_posts = Post.query.all()
+    all_posts = db.session.scalars(db.select(Post)).all()
     posts_by_domain = {}
     for p in all_posts:
         posts_by_domain.setdefault(p.domain_id, []).append(p)
@@ -228,7 +233,7 @@ def generate_behaviors(users_data, avg_per_user=100):
             db.session.commit()
 
     db.session.commit()
-    print(f"  行为记录: {UserBehavior.query.count()}")
+    print(f"  行为记录: {count_rows(UserBehavior)}")
 
 
 def generate_follows(users_data, avg_per_user=6):
@@ -272,7 +277,7 @@ def generate_embeddings():
     from app.services.qwen_service import qwen_service
 
     # 标签 embedding
-    tags = Tag.query.filter(Tag.embedding.is_(None)).all()
+    tags = db.session.scalars(db.select(Tag).filter(Tag.embedding.is_(None))).all()
     if tags:
         print(f"生成标签Embedding ({len(tags)}个)...")
         for i, tag in enumerate(tags):
@@ -287,7 +292,7 @@ def generate_embeddings():
         db.session.commit()
 
     # 帖子 embedding
-    posts = Post.query.filter(Post.content_embedding.is_(None)).all()
+    posts = db.session.scalars(db.select(Post).filter(Post.content_embedding.is_(None))).all()
     if posts:
         print(f"生成帖子Embedding ({len(posts)}个)...")
         for i, post in enumerate(posts):
@@ -308,12 +313,13 @@ def generate_embeddings():
 def compute_user_interest_embeddings():
     """根据用户行为计算兴趣向量（liked/favorited帖子的加权平均）"""
     print("计算用户兴趣向量...")
-    users = User.query.all()
+    users = db.session.scalars(db.select(User)).all()
 
     for user in users:
-        behaviors = UserBehavior.query.filter_by(user_id=user.id).filter(
-            UserBehavior.behavior_type.in_(['like', 'favorite'])
-        ).all()
+        stmt = (db.select(UserBehavior)
+                .filter_by(user_id=user.id)
+                .filter(UserBehavior.behavior_type.in_(['like', 'favorite'])))
+        behaviors = db.session.scalars(stmt).all()
 
         if not behaviors:
             continue
@@ -321,7 +327,7 @@ def compute_user_interest_embeddings():
         embeddings = []
         weights = []
         for b in behaviors:
-            post = Post.query.get(b.post_id)
+            post = db.session.get(Post, b.post_id)
             if post and post.content_embedding:
                 emb = post.content_embedding
                 w = 2.0 if b.behavior_type == 'favorite' else 1.0
@@ -342,16 +348,18 @@ def generate_interest_profiles(sample_size=50):
     from app.services.qwen_service import qwen_service
 
     print(f"生成用户兴趣画像(抽样{sample_size}个)...")
-    users = User.query.filter(User.interest_embedding.isnot(None)).limit(sample_size).all()
+    stmt = db.select(User).filter(User.interest_embedding.isnot(None)).limit(sample_size)
+    users = db.session.scalars(stmt).all()
 
     for i, user in enumerate(users):
         # 获取该用户最常交互的标签
-        behaviors = UserBehavior.query.filter_by(user_id=user.id).filter(
-            UserBehavior.behavior_type.in_(['like', 'favorite', 'comment'])
-        ).all()
+        stmt = (db.select(UserBehavior)
+                .filter_by(user_id=user.id)
+                .filter(UserBehavior.behavior_type.in_(['like', 'favorite', 'comment'])))
+        behaviors = db.session.scalars(stmt).all()
 
         post_ids = list(set(b.post_id for b in behaviors))[:20]
-        posts = Post.query.filter(Post.id.in_(post_ids)).all()
+        posts = db.session.scalars(db.select(Post).filter(Post.id.in_(post_ids))).all()
         titles = [p.title for p in posts[:10]]
 
         if not titles:
@@ -382,7 +390,7 @@ def sync_to_neo4j():
     print("同步数据到 Neo4j...")
 
     # 领域
-    domains = Domain.query.all()
+    domains = db.session.scalars(db.select(Domain)).all()
     neo4j_service.run_write(
         "UNWIND $items AS item MERGE (d:Domain {id: item.id}) SET d.name = item.name",
         {"items": [{"id": d.id, "name": d.name} for d in domains]},
@@ -390,7 +398,7 @@ def sync_to_neo4j():
     print("  领域节点已同步")
 
     # 标签
-    tags = Tag.query.all()
+    tags = db.session.scalars(db.select(Tag)).all()
     neo4j_service.run_write(
         "UNWIND $items AS item MERGE (t:Tag {id: item.id}) SET t.name = item.name",
         {"items": [{"id": t.id, "name": t.name} for t in tags]},
@@ -405,7 +413,7 @@ def sync_to_neo4j():
     print("  标签节点和关系已同步")
 
     # 用户
-    users = User.query.all()
+    users = db.session.scalars(db.select(User)).all()
     neo4j_service.run_write(
         "UNWIND $items AS item MERGE (u:User {id: item.id}) SET u.username = item.username",
         {"items": [{"id": u.id, "username": u.username} for u in users]},
@@ -413,7 +421,7 @@ def sync_to_neo4j():
     print("  用户节点已同步")
 
     # 帖子
-    posts = Post.query.all()
+    posts = db.session.scalars(db.select(Post)).all()
     neo4j_service.run_write(
         "UNWIND $items AS item MERGE (p:Post {id: item.id}) "
         "SET p.title = item.title, p.summary = item.summary",
@@ -441,7 +449,7 @@ def sync_to_neo4j():
     # 用户行为关系（分批处理）
     for btype, rel_type in [('like', 'LIKED'), ('favorite', 'FAVORITED'),
                              ('comment', 'COMMENTED'), ('browse', 'BROWSED')]:
-        behaviors = UserBehavior.query.filter_by(behavior_type=btype).all()
+        behaviors = db.session.scalars(db.select(UserBehavior).filter_by(behavior_type=btype)).all()
         if not behaviors:
             continue
         # 分批，每批1000
@@ -457,7 +465,7 @@ def sync_to_neo4j():
         print(f"  {rel_type} 关系已同步 ({len(behaviors)}条)")
 
     # 关注关系
-    follows = UserFollow.query.all()
+    follows = db.session.scalars(db.select(UserFollow)).all()
     if follows:
         neo4j_service.run_write(
             "UNWIND $items AS item "
@@ -519,12 +527,12 @@ def main():
             print(f"Neo4j同步跳过（未启动）: {e}")
 
         print("\n===== 数据生成完成 =====")
-        print(f"领域: {Domain.query.count()}")
-        print(f"标签: {Tag.query.count()}")
-        print(f"用户: {User.query.count()}")
-        print(f"帖子: {Post.query.count()}")
-        print(f"行为: {UserBehavior.query.count()}")
-        print(f"关注: {UserFollow.query.count()}")
+        print(f"领域: {count_rows(Domain)}")
+        print(f"标签: {count_rows(Tag)}")
+        print(f"用户: {count_rows(User)}")
+        print(f"帖子: {count_rows(Post)}")
+        print(f"行为: {count_rows(UserBehavior)}")
+        print(f"关注: {count_rows(UserFollow)}")
 
 
 if __name__ == '__main__':

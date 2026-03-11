@@ -7,6 +7,7 @@
 import sys
 import os
 import random
+from sqlalchemy import text
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -19,7 +20,7 @@ def migrate():
     app = create_app()
     with app.app_context():
         # 1. 创建 user_tag 表（如果不存在）
-        db.engine.execute("""
+        db.session.execute(text("""
             CREATE TABLE IF NOT EXISTS user_tag (
                 user_id INT NOT NULL,
                 tag_id INT NOT NULL,
@@ -27,7 +28,8 @@ def migrate():
                 FOREIGN KEY (user_id) REFERENCES user(id),
                 FOREIGN KEY (tag_id) REFERENCES tag(id)
             )
-        """)
+        """))
+        db.session.commit()
         print("[OK] user_tag 表已创建")
 
         # 2. 添加 password_hash 和 gender 列（忽略已存在的错误）
@@ -36,17 +38,19 @@ def migrate():
             "ALTER TABLE user ADD COLUMN gender ENUM('male','female','other')",
         ]:
             try:
-                db.engine.execute(stmt)
+                db.session.execute(text(stmt))
+                db.session.commit()
                 print(f"[OK] {stmt}")
             except Exception as e:
+                db.session.rollback()
                 if 'Duplicate column' in str(e):
                     print(f"[SKIP] 列已存在: {stmt}")
                 else:
                     print(f"[WARN] {e}")
 
         # 3. 为已有用户设默认密码和随机属性
-        users = User.query.all()
-        all_tags = Tag.query.all()
+        users = db.session.scalars(db.select(User)).all()
+        all_tags = db.session.scalars(db.select(Tag)).all()
 
         for user in users:
             if not user.password_hash:

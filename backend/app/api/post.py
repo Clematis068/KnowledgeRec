@@ -78,11 +78,8 @@ def _bind_post_tags(post, domain_id, tag_ids=None, tag_names=None, source_user_i
         post.tags = tags
         return resolutions
     elif tag_ids:
-        post.tags = (
-            Tag.query
-            .filter(Tag.domain_id == domain_id, Tag.id.in_(tag_ids))
-            .all()
-        )
+        stmt = db.select(Tag).filter(Tag.domain_id == domain_id, Tag.id.in_(tag_ids))
+        post.tags = db.session.scalars(stmt).all()
     else:
         post.tags = []
     return []
@@ -100,11 +97,15 @@ def _delete_post_from_neo4j(post_id):
 
 
 def _delete_comment_relation_if_needed(user_id, post_id):
-    remaining = UserBehavior.query.filter_by(
-        user_id=user_id,
-        post_id=post_id,
-        behavior_type='comment',
-    ).count()
+    remaining = db.session.scalar(
+        db.select(db.func.count())
+        .select_from(UserBehavior)
+        .filter_by(
+            user_id=user_id,
+            post_id=post_id,
+            behavior_type='comment',
+        )
+    )
     if remaining > 0:
         return
 
@@ -231,7 +232,7 @@ def delete_post(post_id):
     if post.author_id != g.current_user.id:
         return jsonify({"error": "无权删除该帖子"}), 403
 
-    UserBehavior.query.filter_by(post_id=post_id).delete()
+    db.session.execute(db.delete(UserBehavior).filter_by(post_id=post_id))
     post.tags = []
     db.session.delete(post)
     db.session.commit()
@@ -248,13 +249,13 @@ def list_posts():
     per_page = request.args.get('per_page', 20, type=int)
     domain_id = request.args.get('domain_id', type=int)
 
-    query = Post.query
+    stmt = db.select(Post)
     if domain_id:
-        query = query.filter_by(domain_id=domain_id)
-    query = apply_post_visibility_query(query, g.current_user.id if g.current_user else None)
-    query = query.order_by(Post.created_at.desc())
+        stmt = stmt.filter_by(domain_id=domain_id)
+    stmt = apply_post_visibility_query(stmt, g.current_user.id if g.current_user else None)
+    stmt = stmt.order_by(Post.created_at.desc())
 
-    pagination = query.paginate(page=page, per_page=per_page)
+    pagination = db.paginate(stmt, page=page, per_page=per_page)
     return jsonify({
         "posts": [p.to_dict() for p in pagination.items],
         "total": pagination.total,
@@ -267,8 +268,9 @@ def list_posts():
 def hot_posts():
     """热门帖子(按点赞数)"""
     limit = request.args.get('limit', 20, type=int)
-    query = apply_post_visibility_query(Post.query, g.current_user.id if g.current_user else None)
-    posts = query.order_by(Post.like_count.desc()).limit(limit).all()
+    stmt = apply_post_visibility_query(db.select(Post), g.current_user.id if g.current_user else None)
+    stmt = stmt.order_by(Post.like_count.desc()).limit(limit)
+    posts = db.session.scalars(stmt).all()
     return jsonify({"posts": [p.to_dict() for p in posts]})
 
 
@@ -280,17 +282,17 @@ def following_posts():
     per_page = request.args.get('per_page', 20, type=int)
 
     followed_subquery = (
-        db.session.query(UserFollow.followed_id)
+        db.select(UserFollow.followed_id)
         .filter_by(follower_id=g.current_user.id)
         .subquery()
     )
 
-    query = (
-        apply_post_visibility_query(Post.query, g.current_user.id)
+    stmt = (
+        apply_post_visibility_query(db.select(Post), g.current_user.id)
         .filter(Post.author_id.in_(followed_subquery))
         .order_by(Post.created_at.desc())
     )
-    pagination = query.paginate(page=page, per_page=per_page)
+    pagination = db.paginate(stmt, page=page, per_page=per_page)
 
     return jsonify({
         "posts": [p.to_dict() for p in pagination.items],
@@ -316,24 +318,25 @@ def record_behavior(post_id):
 
     # 点赞/收藏/不感兴趣去重
     if behavior_type in ('like', 'favorite', 'dislike'):
-        exists = UserBehavior.query.filter_by(
+        exists = db.session.scalar(db.select(UserBehavior).filter_by(
             user_id=user_id, post_id=post_id, behavior_type=behavior_type
-        ).first()
+        ))
         if exists:
             return jsonify({"message": "已经操作过了"}), 200
 
     if behavior_type in ('like', 'favorite'):
-        dislike_behavior = UserBehavior.query.filter_by(
+        dislike_behavior = db.session.scalar(db.select(UserBehavior).filter_by(
             user_id=user_id, post_id=post_id, behavior_type='dislike'
-        ).first()
+        ))
         if dislike_behavior:
             db.session.delete(dislike_behavior)
     elif behavior_type == 'dislike':
-        positive_behaviors = UserBehavior.query.filter(
+        stmt = db.select(UserBehavior).filter(
             UserBehavior.user_id == user_id,
             UserBehavior.post_id == post_id,
             UserBehavior.behavior_type.in_(['like', 'favorite'])
-        ).all()
+        )
+        positive_behaviors = db.session.scalars(stmt).all()
         for behavior in positive_behaviors:
             if behavior.behavior_type == 'like':
                 post.like_count = max((post.like_count or 0) - 1, 0)
@@ -406,9 +409,9 @@ def unlike_post(post_id):
         return jsonify({"error": "帖子不存在"}), 404
 
     user_id = g.current_user.id
-    behavior = UserBehavior.query.filter_by(
+    behavior = db.session.scalar(db.select(UserBehavior).filter_by(
         user_id=user_id, post_id=post_id, behavior_type='like'
-    ).first()
+    ))
 
     if not behavior:
         return jsonify({"error": "未点赞过"}), 404
@@ -450,23 +453,23 @@ def get_post_user_status(post_id):
         })
 
     user_id = g.current_user.id
-    liked = UserBehavior.query.filter_by(
+    liked = db.session.scalar(db.select(UserBehavior).filter_by(
         user_id=user_id, post_id=post_id, behavior_type='like'
-    ).first() is not None
-    favorited = UserBehavior.query.filter_by(
+    )) is not None
+    favorited = db.session.scalar(db.select(UserBehavior).filter_by(
         user_id=user_id, post_id=post_id, behavior_type='favorite'
-    ).first() is not None
-    disliked = UserBehavior.query.filter_by(
+    )) is not None
+    disliked = db.session.scalar(db.select(UserBehavior).filter_by(
         user_id=user_id, post_id=post_id, behavior_type='dislike'
-    ).first() is not None
-    blocked_author = UserBlockedAuthor.query.filter_by(
+    )) is not None
+    blocked_author = db.session.scalar(db.select(UserBlockedAuthor).filter_by(
         user_id=user_id,
         author_id=post.author_id,
-    ).first() is not None
-    blocked_domain = UserBlockedDomain.query.filter_by(
+    )) is not None
+    blocked_domain = db.session.scalar(db.select(UserBlockedDomain).filter_by(
         user_id=user_id,
         domain_id=post.domain_id,
-    ).first() is not None
+    )) is not None
 
     return jsonify({
         "liked": liked,
@@ -488,11 +491,11 @@ def get_comments(post_id):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
 
-    query = UserBehavior.query.filter_by(
+    stmt = db.select(UserBehavior).filter_by(
         post_id=post_id, behavior_type='comment'
     ).order_by(UserBehavior.created_at.desc())
 
-    pagination = query.paginate(page=page, per_page=per_page)
+    pagination = db.paginate(stmt, page=page, per_page=per_page)
     return jsonify({
         "comments": [b.to_comment_dict() for b in pagination.items],
         "total": pagination.total,
@@ -503,11 +506,11 @@ def get_comments(post_id):
 @login_required
 def delete_comment(post_id, comment_id):
     """删除自己的评论；若已有回复则保留楼层并标记为已删除。"""
-    comment = UserBehavior.query.filter_by(
+    comment = db.session.scalar(db.select(UserBehavior).filter_by(
         id=comment_id,
         post_id=post_id,
         behavior_type='comment',
-    ).first()
+    ))
     if not comment:
         return jsonify({"error": "评论不存在"}), 404
     if comment.user_id != g.current_user.id:
@@ -536,9 +539,9 @@ def unfavorite_post(post_id):
         return jsonify({"error": "帖子不存在"}), 404
 
     user_id = g.current_user.id
-    behavior = UserBehavior.query.filter_by(
+    behavior = db.session.scalar(db.select(UserBehavior).filter_by(
         user_id=user_id, post_id=post_id, behavior_type='favorite'
-    ).first()
+    ))
 
     if not behavior:
         return jsonify({"error": "未收藏过"}), 404
@@ -569,9 +572,9 @@ def undislike_post(post_id):
         return jsonify({"error": "帖子不存在"}), 404
 
     user_id = g.current_user.id
-    behavior = UserBehavior.query.filter_by(
+    behavior = db.session.scalar(db.select(UserBehavior).filter_by(
         user_id=user_id, post_id=post_id, behavior_type='dislike'
-    ).first()
+    ))
 
     if not behavior:
         return jsonify({"error": "未标记不感兴趣"}), 404
@@ -603,10 +606,10 @@ def block_post_author(post_id):
     if post.author_id == g.current_user.id:
         return jsonify({"error": "不能屏蔽自己"}), 400
 
-    exists = UserBlockedAuthor.query.filter_by(
+    exists = db.session.scalar(db.select(UserBlockedAuthor).filter_by(
         user_id=g.current_user.id,
         author_id=post.author_id,
-    ).first()
+    ))
     if exists:
         return jsonify({"message": "已屏蔽该作者"}), 200
 
@@ -635,10 +638,10 @@ def unblock_post_author(post_id):
     if not post:
         return jsonify({"error": "帖子不存在"}), 404
 
-    blocked = UserBlockedAuthor.query.filter_by(
+    blocked = db.session.scalar(db.select(UserBlockedAuthor).filter_by(
         user_id=g.current_user.id,
         author_id=post.author_id,
-    ).first()
+    ))
     if not blocked:
         return jsonify({"error": "未屏蔽该作者"}), 404
 
@@ -665,10 +668,10 @@ def block_post_domain(post_id):
     if not post:
         return jsonify({"error": "帖子不存在"}), 404
 
-    exists = UserBlockedDomain.query.filter_by(
+    exists = db.session.scalar(db.select(UserBlockedDomain).filter_by(
         user_id=g.current_user.id,
         domain_id=post.domain_id,
-    ).first()
+    ))
     if exists:
         return jsonify({"message": "已屏蔽该领域"}), 200
 
@@ -697,10 +700,10 @@ def unblock_post_domain(post_id):
     if not post:
         return jsonify({"error": "帖子不存在"}), 404
 
-    blocked = UserBlockedDomain.query.filter_by(
+    blocked = db.session.scalar(db.select(UserBlockedDomain).filter_by(
         user_id=g.current_user.id,
         domain_id=post.domain_id,
-    ).first()
+    ))
     if not blocked:
         return jsonify({"error": "未屏蔽该领域"}), 404
 

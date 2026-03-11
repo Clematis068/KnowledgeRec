@@ -102,10 +102,11 @@ class RecommendationEngine:
         """对明确点过“不感兴趣”的内容做过滤和相似内容降权。"""
         blocked_author_ids = get_blocked_author_ids(user_id)
         blocked_domain_ids = get_blocked_domain_ids(user_id)
-        disliked_behaviors = UserBehavior.query.filter_by(
+        stmt = db.select(UserBehavior).filter_by(
             user_id=user_id,
             behavior_type='dislike',
-        ).all()
+        )
+        disliked_behaviors = db.session.scalars(stmt).all()
         if not disliked_behaviors and not blocked_author_ids and not blocked_domain_ids:
             return results[:top_n]
         if not disliked_behaviors:
@@ -119,11 +120,8 @@ class RecommendationEngine:
                 filtered.append(item)
             return filtered[:top_n]
 
-        disliked_posts = (
-            Post.query
-            .filter(Post.id.in_([behavior.post_id for behavior in disliked_behaviors]))
-            .all()
-        )
+        stmt = db.select(Post).filter(Post.id.in_([behavior.post_id for behavior in disliked_behaviors]))
+        disliked_posts = db.session.scalars(stmt).all()
         disliked_post_ids = {post.id for post in disliked_posts}
         disliked_author_ids = {post.author_id for post in disliked_posts}
         disliked_domain_ids = {post.domain_id for post in disliked_posts}
@@ -277,12 +275,14 @@ class RecommendationEngine:
 
     def _get_user_stage(self, user_id):
         behavior_count = (
-            UserBehavior.query
-            .filter(
-                UserBehavior.user_id == user_id,
-                UserBehavior.behavior_type.in_(['browse', 'like', 'favorite', 'comment'])
+            db.session.scalar(
+                db.select(db.func.count())
+                .select_from(UserBehavior)
+                .filter(
+                    UserBehavior.user_id == user_id,
+                    UserBehavior.behavior_type.in_(['browse', 'like', 'favorite', 'comment'])
+                )
             )
-            .count()
         )
         if behavior_count == 0:
             return 'cold'

@@ -1,3 +1,4 @@
+from app import db
 from app.models.behavior import UserBlockedAuthor, UserBlockedDomain
 from app.models.post import Post
 
@@ -5,14 +6,16 @@ from app.models.post import Post
 def get_blocked_author_ids(user_id):
     if not user_id:
         return set()
-    rows = UserBlockedAuthor.query.filter_by(user_id=user_id).all()
+    stmt = db.select(UserBlockedAuthor).filter_by(user_id=user_id)
+    rows = db.session.scalars(stmt).all()
     return {row.author_id for row in rows}
 
 
 def get_blocked_domain_ids(user_id):
     if not user_id:
         return set()
-    rows = UserBlockedDomain.query.filter_by(user_id=user_id).all()
+    stmt = db.select(UserBlockedDomain).filter_by(user_id=user_id)
+    rows = db.session.scalars(stmt).all()
     return {row.domain_id for row in rows}
 
 

@@ -40,9 +40,11 @@ class SemanticEngine:
 
         # Stage 1: Embedding 余弦相似度
         if candidate_ids:
-            posts = Post.query.filter(Post.id.in_(candidate_ids)).all()
+            stmt = db.select(Post).filter(Post.id.in_(candidate_ids))
+            posts = db.session.scalars(stmt).all()
         else:
-            posts = Post.query.filter(Post.content_embedding.isnot(None)).all()
+            stmt = db.select(Post).filter(Post.content_embedding.isnot(None))
+            posts = db.session.scalars(stmt).all()
 
         embedding_scores = {}
         for post in posts:
@@ -102,13 +104,13 @@ class SemanticEngine:
 
     def _build_user_embedding_from_behaviors(self, user_id):
         behaviors = (
-            UserBehavior.query
+            db.select(UserBehavior)
             .filter_by(user_id=user_id)
             .filter(UserBehavior.behavior_type.in_(['favorite', 'like', 'comment', 'browse']))
             .order_by(UserBehavior.created_at.desc())
             .limit(100)
-            .all()
         )
+        behaviors = db.session.scalars(behaviors).all()
         if not behaviors:
             return None
 

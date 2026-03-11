@@ -23,13 +23,13 @@ class UserInterestService:
             return None
 
         behaviors = (
-            UserBehavior.query
+            db.select(UserBehavior)
             .filter_by(user_id=user_id)
             .filter(UserBehavior.behavior_type.in_(['favorite', 'like', 'comment', 'browse']))
             .order_by(UserBehavior.created_at.desc())
             .limit(recent_limit)
-            .all()
         )
+        behaviors = db.session.scalars(behaviors).all()
 
         embeddings = []
         embedding_weights = []

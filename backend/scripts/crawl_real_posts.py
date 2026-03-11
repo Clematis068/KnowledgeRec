@@ -27,6 +27,10 @@ from app.models.tag import Tag
 from app.models.domain import Domain
 from app.models.user import User
 
+
+def count_rows(model):
+    return db.session.scalar(db.select(db.func.count()).select_from(model))
+
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
                   'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -199,7 +203,7 @@ def get_random_author(users):
 def insert_post(title, content, summary, author_id, domain_id, tag_ids):
     """插入一篇帖子到数据库"""
     # 去重：同标题不重复插入
-    if Post.query.filter_by(title=title).first():
+    if db.session.scalar(db.select(Post).filter_by(title=title)):
         return False
 
     post = Post(
@@ -224,12 +228,12 @@ def insert_post(title, content, summary, author_id, domain_id, tag_ids):
 def main():
     app = create_app()
     with app.app_context():
-        users = User.query.all()
+        users = db.session.scalars(db.select(User)).all()
         if not users:
             print("错误: 数据库中没有用户，请先运行 generate_mock_data.py")
             return
 
-        tags = Tag.query.all()
+        tags = db.session.scalars(db.select(Tag)).all()
         tag_map = {t.name: t for t in tags}
         total_inserted = 0
 
@@ -308,7 +312,8 @@ def main():
             from app.services.neo4j_service import neo4j_service
 
             # 新帖子节点
-            new_posts = Post.query.filter(Post.content_embedding.is_(None)).all()
+            stmt = db.select(Post).filter(Post.content_embedding.is_(None))
+            new_posts = db.session.scalars(stmt).all()
             if new_posts:
                 neo4j_service.run_write(
                     "UNWIND $items AS item MERGE (p:Post {id: item.id}) "
@@ -338,7 +343,7 @@ def main():
             print(f"  Neo4j 同步跳过: {e}")
 
         print(f"\n===== 总计新增 {total_inserted} 篇真实帖子 =====")
-        print(f"数据库帖子总数: {Post.query.count()}")
+        print(f"数据库帖子总数: {count_rows(Post)}")
 
 
 if __name__ == '__main__':

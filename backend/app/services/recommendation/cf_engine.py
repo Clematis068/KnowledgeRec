@@ -21,7 +21,7 @@ class CFEngine:
 
     def precompute_item_similarity(self):
         """离线预计算物品相似度矩阵，存入 Redis"""
-        behaviors = UserBehavior.query.all()
+        behaviors = db.session.scalars(db.select(UserBehavior)).all()
 
         # 构建 user-item 交互矩阵
         user_items, item_users = self._build_interaction_matrices(behaviors)
@@ -63,7 +63,8 @@ class CFEngine:
         在线推荐：为用户生成 CF 得分
         返回 {post_id: normalized_score}
         """
-        behaviors = UserBehavior.query.filter_by(user_id=user_id).all()
+        stmt = db.select(UserBehavior).filter_by(user_id=user_id)
+        behaviors = db.session.scalars(stmt).all()
         if not behaviors:
             return {}
 
@@ -120,7 +121,7 @@ class CFEngine:
         return user_items, item_users
 
     def _recommend_online(self, user_ratings, candidate_ids=None, top_n=200):
-        behaviors = UserBehavior.query.all()
+        behaviors = db.session.scalars(db.select(UserBehavior)).all()
         user_items, item_users = self._build_interaction_matrices(behaviors)
 
         interacted = set(user_ratings.keys())
