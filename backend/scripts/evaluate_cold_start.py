@@ -50,6 +50,7 @@ def parse_args():
     parser.add_argument("--behavior-history-limit", type=int, default=30, help="行为影响评估中，用最近多少条正向行为构建用户行为画像")
     parser.add_argument("--k", type=int, nargs="+", default=[5, 10, 20], help="评估的 K 值")
     parser.add_argument("--report-dir", default="reports/evaluation", help="评估报告输出目录（相对 backend/）")
+    parser.add_argument("--disable-exploration", action="store_true", help="评估时关闭探索插入，仅保留主召回 + 打散")
     return parser.parse_args()
 
 
@@ -263,7 +264,7 @@ def weighted_domain_recall_at_k(recommended_posts, domain_weights, k):
     return covered_weight / total_weight if total_weight > 0 else 0.0
 
 
-def evaluate_interest_alignment(users, all_posts, enable_hot, k_values):
+def evaluate_interest_alignment(users, all_posts, enable_hot, k_values, enable_exploration):
     metrics = {
         k: {
             "precision": [],
@@ -285,6 +286,7 @@ def evaluate_interest_alignment(users, all_posts, enable_hot, k_values):
                 top_n=max(k_values),
                 enable_llm=False,
                 enable_hot=enable_hot,
+                enable_exploration=enable_exploration,
             )
         except Exception:
             continue
@@ -307,7 +309,7 @@ def evaluate_interest_alignment(users, all_posts, enable_hot, k_values):
     return average_metric_lists(metrics)
 
 
-def evaluate_behavior_impact(users, all_posts, enable_hot, k_values, history_limit):
+def evaluate_behavior_impact(users, all_posts, enable_hot, k_values, history_limit, enable_exploration):
     metrics = {
         k: {
             "behavior_ndcg": [],
@@ -339,6 +341,7 @@ def evaluate_behavior_impact(users, all_posts, enable_hot, k_values, history_lim
                 top_n=max(k_values),
                 enable_llm=False,
                 enable_hot=enable_hot,
+                enable_exploration=enable_exploration,
             )
         except Exception:
             continue
@@ -667,6 +670,7 @@ def main():
         print(f"行为评估最少交互数: {args.behavior_min_count}")
         print(f"行为画像回看条数: {args.behavior_history_limit}")
         print(f"K 值: {args.k}")
+        print(f"探索插入: {not args.disable_exploration}")
 
         if not interest_users:
             print("\n未找到符合条件的冷启动/低行为用户，可调大 --max-behaviors 再试")
@@ -682,12 +686,17 @@ def main():
 
             if interest_users:
                 interest_results[config_name] = evaluate_interest_alignment(
-                    interest_users, all_posts, enable_hot, args.k
+                    interest_users, all_posts, enable_hot, args.k, not args.disable_exploration
                 )
 
             if behavior_users:
                 behavior_results[config_name], summary = evaluate_behavior_impact(
-                    behavior_users, all_posts, enable_hot, args.k, args.behavior_history_limit
+                    behavior_users,
+                    all_posts,
+                    enable_hot,
+                    args.k,
+                    args.behavior_history_limit,
+                    not args.disable_exploration,
                 )
                 if config_name == "with_hot":
                     stage_summary = summary

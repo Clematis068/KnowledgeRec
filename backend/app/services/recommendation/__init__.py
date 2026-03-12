@@ -1,4 +1,6 @@
 """推荐引擎入口：编排三路 Pipeline 并融合"""
+import random
+
 from app import db
 from app.models.behavior import UserBehavior
 from app.models.post import Post
@@ -17,6 +19,15 @@ USER_STAGE_WEIGHTS = {
     'active': {'cf': 0.40, 'graph': 0.27, 'semantic': 0.23, 'hot': 0.10},
 }
 
+MAX_SAME_AUTHOR = 2
+MAX_SAME_DOMAIN = 3
+COLD_MAX_SAME_AUTHOR = 3
+COLD_MAX_SAME_DOMAIN = 6
+DIVERSITY_BUFFER_MULTIPLIER = 4
+EXPLORATION_EPSILON = 0.10
+EXPLORATION_MAX_INSERTS = 2
+EXPLORATION_POOL_MULTIPLIER = 3
+
 
 class RecommendationEngine:
 
@@ -27,7 +38,16 @@ class RecommendationEngine:
         self.hot = HotEngine()
         self.fusion = FusionEngine()
 
-    def recommend(self, user_id, top_n=20, enable_llm=True, enable_hot=True, request_context=None, weights=None):
+    def recommend(
+        self,
+        user_id,
+        top_n=20,
+        enable_llm=True,
+        enable_hot=True,
+        request_context=None,
+        weights=None,
+        enable_exploration=True,
+    ):
         results, _ = self.recommend_with_debug(
             user_id,
             top_n=top_n,
@@ -35,16 +55,28 @@ class RecommendationEngine:
             enable_hot=enable_hot,
             request_context=request_context,
             weights=weights,
+            enable_exploration=enable_exploration,
         )
         return results
 
-    def recommend_with_debug(self, user_id, top_n=20, enable_llm=True, enable_hot=True, request_context=None, weights=None):
+    def recommend_with_debug(
+        self,
+        user_id,
+        top_n=20,
+        enable_llm=True,
+        enable_hot=True,
+        request_context=None,
+        weights=None,
+        enable_exploration=True,
+    ):
         """
         完整三路融合推荐
         1. 协同过滤 -> cf_scores
         2. 图谱传播 -> graph_scores
         3. 语义增强独立召回 -> semantic_scores
-        4. 加权融合 -> final ranking
+        4. 加权融合 -> fusion ranking
+        5. 滑动窗口打散
+        6. 轻量探索插入
         """
         # Pipeline A: 协同过滤
         cf_scores = self.cf.recommend(user_id)
@@ -70,23 +102,38 @@ class RecommendationEngine:
             requested_weights=weights,
         )
 
+        buffer_n = max(top_n * DIVERSITY_BUFFER_MULTIPLIER, top_n)
         results = self.fusion.fuse_with_details(
             cf_scores,
             graph_scores,
             semantic_scores,
             hot_scores,
-            top_n,
+            buffer_n,
             weights=resolved_weights,
         )
         resolved_context = self._resolve_context(user_id, request_context)
         context_results = self._apply_context_bonus(results, resolved_context)
-        final_results = self._apply_negative_feedback(user_id, context_results, top_n)
+        filtered_results = self._apply_negative_feedback(user_id, context_results, buffer_n)
+        diversified_results = self._apply_diversity_window(
+            filtered_results,
+            top_n,
+            debug_info.get('user_stage', 'unknown'),
+        )
+        if enable_exploration:
+            final_results = self._apply_exploration(user_id, diversified_results, filtered_results, top_n)
+        else:
+            final_results = diversified_results[:top_n]
         final_post_ids = {item['post_id'] for item in final_results}
         debug_info['negative_feedback_applied'] = True
+        debug_info['diversity_applied'] = True
+        debug_info['diversity_limits'] = self._get_diversity_limits(debug_info.get('user_stage', 'unknown'))
+        debug_info['exploration_enabled'] = bool(enable_exploration)
         debug_info['hot_enabled'] = bool(enable_hot)
         debug_info['context'] = resolved_context
         debug_info['context_enabled'] = bool(resolved_context.get('region_code') or resolved_context.get('time_slot'))
         debug_info['result_count_before_filter'] = len(results)
+        debug_info['result_count_after_negative_filter'] = len(filtered_results)
+        debug_info['result_count_after_diversity'] = len(diversified_results)
         debug_info['result_count_after_filter'] = len(final_results)
         debug_info['route_samples'] = {
             'cf': self._build_route_samples(cf_scores, final_post_ids),
@@ -95,6 +142,7 @@ class RecommendationEngine:
             'hot': self._build_route_samples(hot_scores, final_post_ids),
         }
         debug_info['fusion_preview'] = self._build_result_preview(results)
+        debug_info['diversity_preview'] = self._build_result_preview(diversified_results)
         debug_info['final_preview'] = self._build_result_preview(final_results)
         return final_results, debug_info
 
@@ -164,6 +212,91 @@ class RecommendationEngine:
 
         rescored_results.sort(key=lambda result: -result['final_score'])
         return rescored_results[:top_n]
+
+    def _apply_diversity_window(self, results, top_n, user_stage):
+        if not results:
+            return []
+
+        limits = self._get_diversity_limits(user_stage)
+        selected = []
+        deferred = []
+        author_counts = {}
+        domain_counts = {}
+
+        for item in results:
+            post = db.session.get(Post, item['post_id'])
+            if not post:
+                continue
+
+            author_count = author_counts.get(post.author_id, 0)
+            domain_count = domain_counts.get(post.domain_id, 0)
+            if author_count >= limits['author'] or domain_count >= limits['domain']:
+                deferred.append((item, post))
+                continue
+
+            picked = dict(item)
+            picked['diversity_kept'] = True
+            selected.append(picked)
+            author_counts[post.author_id] = author_count + 1
+            domain_counts[post.domain_id] = domain_count + 1
+            if len(selected) >= top_n:
+                return selected
+
+        for item, _post in deferred:
+            if len(selected) >= top_n:
+                break
+            fallback_item = dict(item)
+            fallback_item['diversity_fallback'] = True
+            selected.append(fallback_item)
+
+        return selected[:top_n]
+
+    def _get_diversity_limits(self, user_stage):
+        if user_stage == 'cold':
+            return {
+                'author': COLD_MAX_SAME_AUTHOR,
+                'domain': COLD_MAX_SAME_DOMAIN,
+            }
+        return {
+            'author': MAX_SAME_AUTHOR,
+            'domain': MAX_SAME_DOMAIN,
+        }
+
+    def _apply_exploration(self, user_id, selected_results, ranked_results, top_n):
+        if not selected_results:
+            return []
+
+        selected_ids = {selected['post_id'] for selected in selected_results}
+        exploration_pool = [
+            dict(item)
+            for item in ranked_results[top_n: top_n * EXPLORATION_POOL_MULTIPLIER]
+            if item['post_id'] not in selected_ids
+        ]
+        if not exploration_pool:
+            return selected_results[:top_n]
+
+        rng = random.Random(user_id * 9973 + top_n * 131)
+        if rng.random() >= EXPLORATION_EPSILON:
+            return selected_results[:top_n]
+
+        insert_count = 1 if top_n < 12 else EXPLORATION_MAX_INSERTS
+        insert_count = min(insert_count, len(exploration_pool), len(selected_results))
+        insertion_positions = list(range(max(top_n // 2, 1), len(selected_results)))
+        if not insertion_positions:
+            return selected_results[:top_n]
+
+        rng.shuffle(exploration_pool)
+        rng.shuffle(insertion_positions)
+        final_results = [dict(item) for item in selected_results[:top_n]]
+
+        for idx in range(insert_count):
+            position = insertion_positions[idx]
+            exploration_item = dict(exploration_pool[idx])
+            exploration_item['is_exploration'] = True
+            exploration_item['exploration_source_rank'] = ranked_results.index(exploration_pool[idx]) + 1
+            final_results[position] = exploration_item
+
+        return final_results[:top_n]
 
     def _resolve_context(self, user_id, request_context=None):
         from app.models.user import User
@@ -307,6 +440,9 @@ class RecommendationEngine:
                 'hot_score': round(item.get('hot_score', 0.0), 4),
                 'context_score': round(item.get('context_score', 0.0), 4),
                 'negative_penalty': round(item.get('negative_penalty', 0.0), 4),
+                'diversity_kept': bool(item.get('diversity_kept')),
+                'diversity_fallback': bool(item.get('diversity_fallback')),
+                'is_exploration': bool(item.get('is_exploration')),
             })
         return preview
 
