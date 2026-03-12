@@ -1,4 +1,6 @@
 """Pipeline C: LLM 语义增强推荐 (Embedding + LLM Reranking)"""
+from datetime import datetime
+
 import numpy as np
 
 from app import db
@@ -10,35 +12,29 @@ from app.services.redis_service import redis_service
 from app.services.user_interest_service import BEHAVIOR_PROFILE_WEIGHTS
 from app.utils.helpers import cosine_similarity, min_max_normalize
 
+SHORT_TERM_LIMIT = 20
+LONG_TERM_LIMIT = 120
+SHORT_TERM_DECAY = 0.08
+LONG_TERM_DECAY = 0.015
+SHORT_TERM_WEIGHT = 0.65
+LONG_TERM_WEIGHT = 0.35
+
 
 class SemanticEngine:
     def recommend(self, user_id, candidate_ids=None, top_n=200, enable_llm_rerank=True):
         """
-        语义推荐：Embedding相似度 + 可选LLM重排序
+        语义推荐：长短期兴趣融合 + 可选LLM重排序
         返回 {post_id: normalized_score}
         """
         user = db.session.get(User, user_id)
         if not user:
             return {}
 
-        user_emb = user.interest_embedding
+        profile = self._build_user_semantic_profile(user_id, user)
+        if not profile["short_term_embedding"] and not profile["long_term_embedding"]:
+            return {}
 
-        # 优先用真实行为在线聚合兴趣向量，避免新用户/新行为长期没有画像
-        if not user_emb:
-            user_emb = self._build_user_embedding_from_behaviors(user_id)
-
-        # 冷启动：仍没有 embedding 时再用兴趣标签实时生成
-        if not user_emb:
-            tag_names = [t.name for t in user.interest_tags]
-            if not tag_names:
-                return {}
-            try:
-                tag_text = "兴趣领域：" + "、".join(tag_names)
-                user_emb = qwen_service.get_embedding(tag_text)
-            except Exception:
-                return {}
-
-        # Stage 1: Embedding 余弦相似度
+        # Stage 1: 长短期兴趣双路语义召回
         if candidate_ids:
             stmt = db.select(Post).filter(Post.id.in_(candidate_ids))
             posts = db.session.scalars(stmt).all()
@@ -50,8 +46,7 @@ class SemanticEngine:
         for post in posts:
             if not post.content_embedding:
                 continue
-            sim = cosine_similarity(user_emb, post.content_embedding)
-            embedding_scores[post.id] = (sim + 1) / 2  # [-1,1] -> [0,1]
+            embedding_scores[post.id] = self._score_post(profile, post)
 
         embedding_scores = min_max_normalize(embedding_scores)
 
@@ -102,13 +97,73 @@ class SemanticEngine:
         redis_service.set_json(cache_key, score, ttl=3600)
         return score
 
-    def _build_user_embedding_from_behaviors(self, user_id):
+    def _build_user_semantic_profile(self, user_id, user):
+        long_term_embedding = user.interest_embedding or self._build_user_embedding_from_behaviors(
+            user_id,
+            recent_limit=LONG_TERM_LIMIT,
+            decay_lambda=LONG_TERM_DECAY,
+        )
+        short_term_embedding = self._build_user_embedding_from_behaviors(
+            user_id,
+            recent_limit=SHORT_TERM_LIMIT,
+            decay_lambda=SHORT_TERM_DECAY,
+        )
+
+        if not long_term_embedding:
+            long_term_embedding = self._build_interest_tag_embedding(user)
+        if not short_term_embedding:
+            short_term_embedding = long_term_embedding
+
+        return {
+            "short_term_embedding": short_term_embedding,
+            "long_term_embedding": long_term_embedding,
+        }
+
+    def _build_interest_tag_embedding(self, user):
+        tag_names = [tag.name for tag in user.interest_tags]
+        if not tag_names:
+            return None
+        try:
+            tag_text = "兴趣领域：" + "、".join(tag_names)
+            return qwen_service.get_embedding(tag_text)
+        except Exception:
+            return None
+
+    def _score_post(self, profile, post):
+        short_term_score = self._embedding_similarity(
+            profile["short_term_embedding"],
+            post.content_embedding,
+        )
+        long_term_score = self._embedding_similarity(
+            profile["long_term_embedding"],
+            post.content_embedding,
+        )
+
+        weighted_score = 0.0
+        total_weight = 0.0
+        if short_term_score is not None:
+            weighted_score += short_term_score * SHORT_TERM_WEIGHT
+            total_weight += SHORT_TERM_WEIGHT
+        if long_term_score is not None:
+            weighted_score += long_term_score * LONG_TERM_WEIGHT
+            total_weight += LONG_TERM_WEIGHT
+
+        if total_weight <= 0:
+            return 0.0
+        return weighted_score / total_weight
+
+    def _embedding_similarity(self, user_embedding, post_embedding):
+        if not user_embedding or not post_embedding:
+            return None
+        return (cosine_similarity(user_embedding, post_embedding) + 1) / 2
+
+    def _build_user_embedding_from_behaviors(self, user_id, recent_limit=100, decay_lambda=0.0):
         behaviors = (
             db.select(UserBehavior)
             .filter_by(user_id=user_id)
             .filter(UserBehavior.behavior_type.in_(['favorite', 'like', 'comment', 'browse']))
             .order_by(UserBehavior.created_at.desc())
-            .limit(100)
+            .limit(recent_limit)
         )
         behaviors = db.session.scalars(behaviors).all()
         if not behaviors:
@@ -124,6 +179,9 @@ class SemanticEngine:
             weight = BEHAVIOR_PROFILE_WEIGHTS.get(behavior.behavior_type, 1.0)
             if behavior.behavior_type == 'browse':
                 weight *= min((behavior.duration or 30) / 60.0, 2.0)
+            if decay_lambda > 0 and behavior.created_at:
+                age_days = max((datetime.now() - behavior.created_at).days, 0)
+                weight *= np.exp(-decay_lambda * age_days)
             embeddings.append(np.array(post.content_embedding))
             weights.append(weight)
 
