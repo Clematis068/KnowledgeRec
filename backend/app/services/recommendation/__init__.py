@@ -12,12 +12,13 @@ from .graph_engine import GraphEngine
 from .hot_engine import HotEngine
 from .semantic_engine import SemanticEngine
 from .fusion import FusionEngine
+from .logic_constraint_engine import LogicConstraintEngine
 from .swing_engine import SwingEngine
 
 USER_STAGE_WEIGHTS = {
-    'cold': {'cf': 0.00, 'swing': 0.00, 'graph': 0.28, 'semantic': 0.30, 'hot': 0.42},
-    'warm': {'cf': 0.16, 'swing': 0.06, 'graph': 0.30, 'semantic': 0.26, 'hot': 0.22},
-    'active': {'cf': 0.31, 'swing': 0.08, 'graph': 0.27, 'semantic': 0.24, 'hot': 0.10},
+    'cold': {'cf': 0.00, 'swing': 0.00, 'graph': 0.23, 'semantic': 0.24, 'knowledge': 0.11, 'hot': 0.42},
+    'warm': {'cf': 0.14, 'swing': 0.06, 'graph': 0.25, 'semantic': 0.22, 'knowledge': 0.11, 'hot': 0.22},
+    'active': {'cf': 0.28, 'swing': 0.08, 'graph': 0.22, 'semantic': 0.20, 'knowledge': 0.12, 'hot': 0.10},
 }
 
 MAX_SAME_AUTHOR = 2
@@ -39,6 +40,7 @@ class RecommendationEngine:
         self.semantic = SemanticEngine()
         self.hot = HotEngine()
         self.fusion = FusionEngine()
+        self.logic = LogicConstraintEngine()
 
     def recommend(
         self,
@@ -80,9 +82,11 @@ class RecommendationEngine:
         2. Swing 小圈子召回 -> swing_scores
         3. 图谱传播 -> graph_scores
         4. 语义增强独立召回 -> semantic_scores
-        5. 加权融合 -> fusion ranking
-        6. 滑动窗口打散
-        7. 轻量探索插入
+        5. 知识关系召回 -> knowledge_scores
+        6. 加权融合 -> fusion ranking
+        7. 知识逻辑约束
+        8. 滑动窗口打散
+        9. 轻量探索插入
         """
         # Pipeline A: 协同过滤
         cf_scores = self.cf.recommend(user_id)
@@ -102,12 +106,16 @@ class RecommendationEngine:
         # Pipeline E: 热门召回，缓解冷启动和候选不足
         hot_scores = self.hot.recommend(user_id) if enable_hot else {}
 
+        # Pipeline F: 基于 tag 关系的知识召回
+        knowledge_scores = self.logic.recall(user_id)
+
         resolved_weights, debug_info = self._resolve_weights(
             user_id,
             cf_scores,
             swing_scores,
             graph_scores,
             semantic_scores,
+            knowledge_scores,
             hot_scores,
             requested_weights=weights,
         )
@@ -118,6 +126,7 @@ class RecommendationEngine:
             swing_scores,
             graph_scores,
             semantic_scores,
+            knowledge_scores,
             hot_scores,
             buffer_n,
             weights=resolved_weights,
@@ -125,8 +134,9 @@ class RecommendationEngine:
         resolved_context = self._resolve_context(user_id, request_context)
         context_results = self._apply_context_bonus(results, resolved_context)
         filtered_results = self._apply_negative_feedback(user_id, context_results, buffer_n)
+        logic_adjusted_results = self.logic.apply(user_id, filtered_results)
         diversified_results = self._apply_diversity_window(
-            filtered_results,
+            logic_adjusted_results,
             top_n,
             debug_info.get('user_stage', 'unknown'),
         )
@@ -141,10 +151,12 @@ class RecommendationEngine:
         debug_info['exploration_enabled'] = bool(enable_exploration)
         debug_info['swing_enabled'] = bool(enable_swing)
         debug_info['hot_enabled'] = bool(enable_hot)
+        debug_info['knowledge_enabled'] = bool(knowledge_scores)
         debug_info['context'] = resolved_context
         debug_info['context_enabled'] = bool(resolved_context.get('region_code') or resolved_context.get('time_slot'))
         debug_info['result_count_before_filter'] = len(results)
         debug_info['result_count_after_negative_filter'] = len(filtered_results)
+        debug_info['result_count_after_logic'] = len(logic_adjusted_results)
         debug_info['result_count_after_diversity'] = len(diversified_results)
         debug_info['result_count_after_filter'] = len(final_results)
         debug_info['route_samples'] = {
@@ -152,9 +164,11 @@ class RecommendationEngine:
             'swing': self._build_route_samples(swing_scores, final_post_ids),
             'graph': self._build_route_samples(graph_scores, final_post_ids),
             'semantic': self._build_route_samples(semantic_scores, final_post_ids),
+            'knowledge': self._build_route_samples(knowledge_scores, final_post_ids),
             'hot': self._build_route_samples(hot_scores, final_post_ids),
         }
         debug_info['fusion_preview'] = self._build_result_preview(results)
+        debug_info['logic_preview'] = self._build_result_preview(logic_adjusted_results)
         debug_info['diversity_preview'] = self._build_result_preview(diversified_results)
         debug_info['final_preview'] = self._build_result_preview(final_results)
         return final_results, debug_info
@@ -342,22 +356,24 @@ class RecommendationEngine:
         rescored_results.sort(key=lambda result: -result['final_score'])
         return rescored_results
 
-    def _resolve_weights(self, user_id, cf_scores, swing_scores, graph_scores, semantic_scores, hot_scores, requested_weights=None):
+    def _resolve_weights(self, user_id, cf_scores, swing_scores, graph_scores, semantic_scores, knowledge_scores, hot_scores, requested_weights=None):
         stage = self._get_user_stage(user_id)
         if requested_weights:
             hot_weight = USER_STAGE_WEIGHTS[stage].get('hot', 0.0)
+            knowledge_weight = USER_STAGE_WEIGHTS[stage].get('knowledge', 0.0)
             normalized_requested = self.fusion._normalize_weights({
                 'cf': requested_weights.get('cf', 0.0),
                 'swing': requested_weights.get('swing', 0.0),
                 'graph': requested_weights.get('graph', 0.0),
                 'semantic': requested_weights.get('semantic', 0.0),
             })
-            remaining_weight = max(1.0 - hot_weight, 0.0)
+            remaining_weight = max(1.0 - hot_weight - knowledge_weight, 0.0)
             base_weights = {
                 'cf': normalized_requested['cf'] * remaining_weight,
                 'swing': normalized_requested['swing'] * remaining_weight,
                 'graph': normalized_requested['graph'] * remaining_weight,
                 'semantic': normalized_requested['semantic'] * remaining_weight,
+                'knowledge': knowledge_weight,
                 'hot': hot_weight,
             }
         else:
@@ -370,6 +386,7 @@ class RecommendationEngine:
             'swing': bool(swing_scores),
             'graph': bool(graph_scores),
             'semantic': bool(semantic_scores),
+            'knowledge': bool(knowledge_scores),
             'hot': bool(hot_scores),
         }
 
@@ -385,6 +402,7 @@ class RecommendationEngine:
                     'swing': len(swing_scores),
                     'graph': len(graph_scores),
                     'semantic': len(semantic_scores),
+                    'knowledge': len(knowledge_scores),
                     'hot': len(hot_scores),
                 },
             }
@@ -422,6 +440,7 @@ class RecommendationEngine:
                 'swing': len(swing_scores),
                 'graph': len(graph_scores),
                 'semantic': len(semantic_scores),
+                'knowledge': len(knowledge_scores),
                 'hot': len(hot_scores),
             },
         }
@@ -469,9 +488,12 @@ class RecommendationEngine:
                 'swing_score': round(item.get('swing_score', 0.0), 4),
                 'graph_score': round(item.get('graph_score', 0.0), 4),
                 'semantic_score': round(item.get('semantic_score', 0.0), 4),
+                'knowledge_score': round(item.get('knowledge_score', 0.0), 4),
                 'hot_score': round(item.get('hot_score', 0.0), 4),
                 'context_score': round(item.get('context_score', 0.0), 4),
                 'negative_penalty': round(item.get('negative_penalty', 0.0), 4),
+                'logic_bonus': round(item.get('logic_bonus', 0.0), 4),
+                'logic_penalty': round(item.get('logic_penalty', 0.0), 4),
                 'diversity_kept': bool(item.get('diversity_kept')),
                 'diversity_fallback': bool(item.get('diversity_fallback')),
                 'is_exploration': bool(item.get('is_exploration')),

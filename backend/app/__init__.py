@@ -24,6 +24,7 @@ def create_app():
     from .api.post import post_bp
     from .api.auth import auth_bp
     from .api.search import search_bp
+    from .api.tag_taxonomy import tag_taxonomy_bp
 
     app.register_blueprint(llm_bp, url_prefix='/api/llm')
     app.register_blueprint(rec_bp, url_prefix='/api')
@@ -31,5 +32,6 @@ def create_app():
     app.register_blueprint(post_bp, url_prefix='/api/post')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(search_bp, url_prefix='/api/search')
+    app.register_blueprint(tag_taxonomy_bp, url_prefix='/api')
 
     return app
