@@ -88,7 +88,7 @@ function saveProfile() {
       <section class="panel overview-panel">
         <div class="panel-head">
           <h3>资料概览</h3>
-          <p>简介、邮箱和兴趣标签会一起更新。</p>
+          <p>简介和兴趣标签会直接更新；邮箱变更需要额外验证码确认。</p>
         </div>
 
         <div class="field-block">

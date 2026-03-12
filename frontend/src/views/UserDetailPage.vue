@@ -181,23 +181,39 @@
       :tag-groups="tagGroups"
       @save="handleSaveProfile"
     />
+    <ChangeEmailVerifyDialog
+      v-model:visible="emailVerifyDialogVisible"
+      v-model:code="emailCode"
+      :email="pendingEmail"
+      :countdown="emailCountdown"
+      :sending="emailSending"
+      :verifying="emailVerifying"
+      :verified="emailVerified"
+      :dev-code="emailDevCode"
+      :saving="editLoading"
+      @send-code="handleSendProfileEmailCode"
+      @verify-code="handleVerifyProfileEmailCode"
+      @confirm="handleConfirmProfileEmailChange"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getBlockedAuthors, getBlockedDomains, getUserBehaviors, getUserDetail, getUserPosts, getUserFavorites,
   followUser, unfollowUser, getFollowers, getFollowing,
-  getFollowStatus, removeBlockedAuthor, removeBlockedDomain, updateProfile,
+  getFollowStatus, removeBlockedAuthor, removeBlockedDomain,
+  sendProfileEmailCode, updateProfile, verifyProfileEmailCode,
 } from '../api/user'
 import { getTags } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
 import { deletePost } from '../api/post'
 import PostCard from '../components/post/PostCard.vue'
 import BehaviorTimeline from '../components/user/BehaviorTimeline.vue'
+import ChangeEmailVerifyDialog from '../components/user/ChangeEmailVerifyDialog.vue'
 import ProfileEditDialog from '../components/user/ProfileEditDialog.vue'
 
 const route = useRoute()
@@ -237,6 +253,16 @@ const blockedDomains = ref([])
 const editDialogVisible = ref(false)
 const editLoading = ref(false)
 const tagGroups = ref([])
+const emailVerifyDialogVisible = ref(false)
+const emailCode = ref('')
+const emailCountdown = ref(0)
+const emailSending = ref(false)
+const emailVerifying = ref(false)
+const emailVerified = ref(false)
+const emailDevCode = ref('')
+const pendingProfilePayload = ref(null)
+
+let emailCountdownTimer = null
 
 // 已加载的 tab 集合（用于懒加载）
 const loadedTabs = ref(new Set())
@@ -249,6 +275,46 @@ const editableProfile = computed(() => ({
   email: user.value?.email || '',
   tag_ids: (user.value?.interest_tags || []).map((tag) => tag.id),
 }))
+const pendingEmail = computed(() => pendingProfilePayload.value?.email || '')
+
+function isValidEmail(email) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email || '')
+}
+
+function clearEmailCountdown() {
+  if (!emailCountdownTimer) return
+  window.clearInterval(emailCountdownTimer)
+  emailCountdownTimer = null
+}
+
+function startEmailCountdown(seconds = 60) {
+  emailCountdown.value = seconds
+  clearEmailCountdown()
+  emailCountdownTimer = window.setInterval(() => {
+    if (emailCountdown.value <= 1) {
+      clearEmailCountdown()
+      emailCountdown.value = 0
+      return
+    }
+    emailCountdown.value -= 1
+  }, 1000)
+}
+
+function resetEmailVerifyState() {
+  emailCode.value = ''
+  emailCountdown.value = 0
+  emailSending.value = false
+  emailVerifying.value = false
+  emailVerified.value = false
+  emailDevCode.value = ''
+  clearEmailCountdown()
+}
+
+function closeEmailVerifyDialog() {
+  emailVerifyDialogVisible.value = false
+  pendingProfilePayload.value = null
+  resetEmailVerifyState()
+}
 
 async function fetchProfile() {
   loading.value = true
@@ -384,7 +450,7 @@ function openEditDialog() {
   editDialogVisible.value = true
 }
 
-async function handleSaveProfile(payload) {
+async function persistProfile(payload) {
   editLoading.value = true
   try {
     const updated = await updateProfile(payload)
@@ -393,10 +459,83 @@ async function handleSaveProfile(payload) {
       await authStore.fetchUser()
     }
     editDialogVisible.value = false
+    closeEmailVerifyDialog()
     ElMessage.success('资料已更新')
   } finally {
     editLoading.value = false
   }
+}
+
+async function handleSaveProfile(payload) {
+  const currentEmail = (user.value?.email || '').trim().toLowerCase()
+  const nextEmail = (payload.email || '').trim().toLowerCase()
+
+  if (nextEmail !== currentEmail) {
+    if (!nextEmail) {
+      ElMessage.warning('请输入新邮箱')
+      return
+    }
+    if (!isValidEmail(nextEmail)) {
+      ElMessage.warning('邮箱格式不正确')
+      return
+    }
+
+    pendingProfilePayload.value = {
+      ...payload,
+      email: nextEmail,
+    }
+    resetEmailVerifyState()
+    emailVerifyDialogVisible.value = true
+    return
+  }
+
+  await persistProfile(payload)
+}
+
+async function handleSendProfileEmailCode() {
+  if (!pendingEmail.value) {
+    ElMessage.warning('请先输入新邮箱')
+    return
+  }
+
+  emailSending.value = true
+  try {
+    const data = await sendProfileEmailCode(pendingEmail.value)
+    emailDevCode.value = data.dev_code || ''
+    startEmailCountdown()
+    ElMessage.success(emailDevCode.value ? `验证码已生成：${emailDevCode.value}` : '验证码已发送')
+  } catch {
+    // 错误已由拦截器处理
+  } finally {
+    emailSending.value = false
+  }
+}
+
+async function handleVerifyProfileEmailCode() {
+  if (!emailCode.value.trim()) {
+    ElMessage.warning('请输入验证码')
+    return
+  }
+
+  emailVerifying.value = true
+  try {
+    await verifyProfileEmailCode(pendingEmail.value, emailCode.value.trim())
+    emailVerified.value = true
+    ElMessage.success('邮箱验证成功')
+  } catch {
+    emailVerified.value = false
+  } finally {
+    emailVerifying.value = false
+  }
+}
+
+async function handleConfirmProfileEmailChange() {
+  if (!pendingProfilePayload.value) return
+  if (!emailVerified.value) {
+    ElMessage.warning('请先完成邮箱验证')
+    return
+  }
+  await persistProfile(pendingProfilePayload.value)
 }
 
 function goToEditPost(postId) {
@@ -455,6 +594,13 @@ watch(activeTab, (tab) => {
   }
 })
 
+watch(emailVerifyDialogVisible, (visible, previousVisible) => {
+  if (!visible && previousVisible) {
+    pendingProfilePayload.value = null
+    resetEmailVerifyState()
+  }
+})
+
 onMounted(async () => {
   fetchProfile()
   // 加载按领域分组的标签（编辑用）
@@ -464,6 +610,10 @@ onMounted(async () => {
   } catch {
     // ignore
   }
+})
+
+onBeforeUnmount(() => {
+  clearEmailCountdown()
 })
 </script>
 

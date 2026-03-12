@@ -1,3 +1,7 @@
+import random
+import re
+
+from sqlalchemy.exc import IntegrityError
 from flask import Blueprint, request, jsonify, g
 from app import db
 from app.models.user import User
@@ -12,10 +16,36 @@ from app.models.behavior import (
 )
 from app.services.tag_taxonomy_service import tag_taxonomy_service
 from app.services.redis_service import redis_service
+from app.services.mail_service import mail_service
 from app.utils.auth import login_required, optional_login
 from app.utils.content_filter import apply_post_visibility_query, filter_posts
 
 user_bp = Blueprint('user', __name__)
+
+EMAIL_CODE_TTL = 600
+EMAIL_VERIFIED_TTL = 1800
+EMAIL_SEND_COOLDOWN = 60
+EMAIL_PATTERN = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
+def _is_valid_email(email):
+    return bool(EMAIL_PATTERN.match(email or ''))
+
+
+def _generate_email_code():
+    return ''.join(str(random.randint(0, 9)) for _ in range(6))
+
+
+def _profile_email_code_key(user_id, email):
+    return f'email_code:profile_update:{user_id}:{email.lower()}'
+
+
+def _profile_email_verified_key(user_id, email):
+    return f'email_verified:profile_update:{user_id}:{email.lower()}'
+
+
+def _profile_email_cooldown_key(user_id, email):
+    return f'email_code_cooldown:profile_update:{user_id}:{email.lower()}'
 
 
 @user_bp.route('/<int:user_id>', methods=['GET'])
@@ -64,8 +94,26 @@ def update_profile():
         user.bio = data['bio']
     if 'gender' in data and data['gender'] in ('male', 'female', 'other'):
         user.gender = data['gender']
+    updated_email = None
     if 'email' in data:
-        user.email = data['email']
+        incoming_email = (data.get('email') or '').strip().lower()
+        if not incoming_email:
+            return jsonify({"error": "邮箱不能为空"}), 400
+        if not _is_valid_email(incoming_email):
+            return jsonify({"error": "邮箱格式不正确"}), 400
+
+        if incoming_email != (user.email or '').strip().lower():
+            exists_user = db.session.scalar(db.select(User).filter(
+                User.email == incoming_email,
+                User.id != user.id,
+            ))
+            if exists_user:
+                return jsonify({"error": "邮箱已被占用"}), 409
+
+            if redis_service.get_value(_profile_email_verified_key(user.id, incoming_email)) != '1':
+                return jsonify({"error": "请先完成新邮箱验证码校验"}), 400
+            user.email = incoming_email
+            updated_email = incoming_email
     if 'tag_ids' in data:
         stmt = db.select(Tag).filter(Tag.id.in_(data['tag_ids']))
         tags = db.session.scalars(stmt).all()
@@ -76,11 +124,90 @@ def update_profile():
             if tags else None
         )
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "邮箱已被占用"}), 409
+
     if 'tag_ids' in data:
         tag_taxonomy_service.sync_user_interest_tags(user)
         redis_service.delete_pattern(f'llm_rel:{user.id}:*')
+    if updated_email:
+        redis_service.delete(_profile_email_verified_key(user.id, updated_email))
+        redis_service.delete(_profile_email_code_key(user.id, updated_email))
+        redis_service.delete(_profile_email_cooldown_key(user.id, updated_email))
     return jsonify(user.to_dict())
+
+
+@user_bp.route('/profile/email/send-code', methods=['POST'])
+@login_required
+def send_profile_email_code():
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    user = g.current_user
+
+    if not email:
+        return jsonify({"error": "邮箱不能为空"}), 400
+    if not _is_valid_email(email):
+        return jsonify({"error": "邮箱格式不正确"}), 400
+    if email == (user.email or '').strip().lower():
+        return jsonify({"error": "新邮箱不能与当前邮箱相同"}), 400
+
+    exists_user = db.session.scalar(db.select(User).filter(
+        User.email == email,
+        User.id != user.id,
+    ))
+    if exists_user:
+        return jsonify({"error": "邮箱已被占用"}), 409
+
+    cooldown_key = _profile_email_cooldown_key(user.id, email)
+    if redis_service.get_value(cooldown_key):
+        return jsonify({"error": "验证码发送过于频繁，请稍后再试"}), 429
+
+    code = _generate_email_code()
+    redis_service.set_value(_profile_email_code_key(user.id, email), code, ttl=EMAIL_CODE_TTL)
+    redis_service.set_value(cooldown_key, '1', ttl=EMAIL_SEND_COOLDOWN)
+    redis_service.delete(_profile_email_verified_key(user.id, email))
+
+    send_result = mail_service.send_verification_code(email, code)
+    payload = {'message': '验证码已发送'}
+    if send_result.get('mode') == 'dev':
+        payload['dev_code'] = code
+    return jsonify(payload)
+
+
+@user_bp.route('/profile/email/verify-code', methods=['POST'])
+@login_required
+def verify_profile_email_code():
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    code = (data.get('code') or '').strip()
+    user = g.current_user
+
+    if not email or not code:
+        return jsonify({"error": "邮箱和验证码不能为空"}), 400
+    if not _is_valid_email(email):
+        return jsonify({"error": "邮箱格式不正确"}), 400
+    if email == (user.email or '').strip().lower():
+        return jsonify({"error": "新邮箱不能与当前邮箱相同"}), 400
+
+    exists_user = db.session.scalar(db.select(User).filter(
+        User.email == email,
+        User.id != user.id,
+    ))
+    if exists_user:
+        return jsonify({"error": "邮箱已被占用"}), 409
+
+    cached_code = redis_service.get_value(_profile_email_code_key(user.id, email))
+    if not cached_code:
+        return jsonify({"error": "验证码已过期，请重新发送"}), 400
+    if cached_code != code:
+        return jsonify({"error": "验证码错误"}), 400
+
+    redis_service.set_value(_profile_email_verified_key(user.id, email), '1', ttl=EMAIL_VERIFIED_TTL)
+    redis_service.delete(_profile_email_code_key(user.id, email))
+    return jsonify({'message': '邮箱验证通过', 'verified': True})
 
 
 @user_bp.route('/follow/<int:target_id>', methods=['POST'])

@@ -90,6 +90,38 @@ COMMENT_TEMPLATES = [
     "能否展开讲讲实际应用场景？",
 ]
 
+BIO_ROLE_MAP = {
+    "计算机科学": ["后端开发", "算法工程师", "计算机专业学生", "独立开发者"],
+    "数学": ["数学系学生", "数据分析师", "竞赛爱好者", "研究助理"],
+    "物理学": ["物理系学生", "科研助理", "实验室成员"],
+    "化学": ["化学专业学生", "实验室成员", "材料方向研究生"],
+    "生物学": ["生物专业学生", "科研助理", "实验记录党"],
+    "医学与健康": ["医学生", "临床科研助理", "健康内容学习者"],
+    "心理学": ["心理学学生", "咨询方向学习者", "行为观察爱好者"],
+    "经济学": ["经济学学生", "政策观察者", "研究生"],
+    "金融学": ["金融从业者", "量化学习者", "投资研究爱好者"],
+    "管理学": ["产品经理", "运营同学", "创业观察者"],
+    "法学": ["法学生", "法律从业者", "案例研究爱好者"],
+    "教育学": ["一线教师", "教育学学生", "课程设计爱好者"],
+    "新闻传播学": ["内容运营", "媒体观察者", "传播学学生"],
+}
+
+BIO_GOALS = [
+    "最近在补基础，也会记一些学习笔记。",
+    "主要把这里当成整理资料和交流想法的地方。",
+    "平时会关注新进展，也会记录自己的理解。",
+    "希望把零散知识慢慢串成体系。",
+    "欢迎交流入门资料、实践经验和踩坑记录。",
+]
+
+BIO_STYLE_TEMPLATES = [
+    "{role}，主要关注{tags}，{goal}",
+    "{role}，最近在看{tags}，也会持续学习{domains}相关内容。",
+    "目前在做{domains}方向的学习和积累，重点关注{tags}。",
+    "{role}，平时会记录{domains}的学习心得，最近更关注{tags}。",
+    "长期关注{domains}，最近在系统补{tags}这块内容。",
+]
+
 
 def generate_domains_and_tags():
     """生成领域和标签"""
@@ -111,6 +143,42 @@ def generate_domains_and_tags():
     print(f"  领域: {count_rows(Domain)}, 标签: {count_rows(Tag)}")
 
 
+def _pick_interest_tags(interests, max_tags=3):
+    selected_tags = []
+    shuffled_interests = interests[:]
+    random.shuffle(shuffled_interests)
+
+    for domain in shuffled_interests:
+        domain_tags = domain.tags.all()
+        if not domain_tags:
+            continue
+        selected_tags.append(random.choice(domain_tags).name)
+        if len(selected_tags) >= max_tags:
+            break
+
+    return selected_tags
+
+
+def build_realistic_bio(interests):
+    main_domain = interests[0].name
+    domain_names = [domain.name for domain in interests[:2]]
+    focus_tags = _pick_interest_tags(interests, max_tags=min(3, len(interests) + 1))
+
+    role_pool = BIO_ROLE_MAP.get(main_domain, ["学习者", "从业者", "研究爱好者"])
+    role = random.choice(role_pool)
+    tags_text = "、".join(focus_tags) if focus_tags else main_domain
+    domains_text = "、".join(domain_names)
+    goal = random.choice(BIO_GOALS)
+    template = random.choice(BIO_STYLE_TEMPLATES)
+
+    return template.format(
+        role=role,
+        tags=tags_text,
+        domains=domains_text,
+        goal=goal,
+    )
+
+
 def generate_users(n=500):
     """生成用户，每个用户分配2-4个兴趣领域"""
     print(f"生成 {n} 个用户...")
@@ -118,16 +186,17 @@ def generate_users(n=500):
     users_data = []
 
     for i in range(n):
+        interests = random.sample(domains, k=random.randint(2, 4))
         user = User(
             username=fake.user_name() + str(i),
             email=f"user{i}@example.com",
-            bio=fake.sentence(nb_words=10),
+            bio=build_realistic_bio(interests),
             created_at=fake.date_time_between(start_date='-180d', end_date='-30d'),
         )
         db.session.add(user)
         users_data.append({
             'user': user,
-            'interests': random.sample(domains, k=random.randint(2, 4)),
+            'interests': interests,
         })
 
     db.session.commit()

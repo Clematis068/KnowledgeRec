@@ -74,3 +74,13 @@ export function removeBlockedDomain(domainId) {
 export function updateProfile(data) {
   return request.put('/user/profile', data)
 }
+
+/** 发送资料更新邮箱验证码 */
+export function sendProfileEmailCode(email) {
+  return request.post('/user/profile/email/send-code', { email })
+}
+
+/** 校验资料更新邮箱验证码 */
+export function verifyProfileEmailCode(email, code) {
+  return request.post('/user/profile/email/verify-code', { email, code })
+}
