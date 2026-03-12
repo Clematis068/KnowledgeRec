@@ -16,16 +16,38 @@
           <el-option label="搜帖子" value="post" />
           <el-option label="搜作者" value="author" />
         </el-select>
-        <el-input
+        <el-autocomplete
           ref="searchInputRef"
           v-model="searchQuery"
+          :fetch-suggestions="fetchSearchSuggestions"
           :prefix-icon="Search"
           :placeholder="searchPlaceholder"
+          popper-class="search-suggestion-popper"
           clearable
+          :trigger-on-focus="searchType === 'post'"
+          value-key="value"
           size="large"
           class="search-input"
           @keyup.enter="handleSearch"
-        />
+          @select="handleSuggestionSelect"
+        >
+          <template #default="{ item }">
+            <div :class="['search-suggestion', { 'is-first-hot': item.isFirstHot }]">
+              <span v-if="item.isFirstHot" class="suggestion-divider">热门内容</span>
+              <span class="suggestion-title">{{ item.value }}</span>
+              <span class="suggestion-meta">
+                <span :class="['suggestion-source', item.kind]">
+                  {{ item.kind === 'history' ? '搜索历史' : '热搜' }}
+                </span>
+                <template v-if="item.kind === 'hot'">
+                  <span>#{{ item.rank }}</span>
+                  <span>{{ item.authorName || '匿名作者' }}</span>
+                  <span>{{ item.likeCount || 0 }} 赞</span>
+                </template>
+              </span>
+            </div>
+          </template>
+        </el-autocomplete>
       </div>
     </div>
 
@@ -67,22 +89,146 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, UserFilled } from '@element-plus/icons-vue'
+import { getHotPosts } from '../../api/post'
 import { useAuthStore } from '../../stores/auth'
+
+const HOT_SUGGESTION_LIMIT = 5
+const SEARCH_HISTORY_LIMIT = 5
+const SEARCH_HISTORY_STORAGE_KEY = 'app:search-history'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const searchInputRef = ref()
 const searchQuery = ref('')
 const searchType = ref('post')
+const hotSuggestions = ref([])
+const hotSuggestionsLoaded = ref(false)
+const searchHistory = ref(loadSearchHistory())
 
 const searchPlaceholder = computed(() => (
   searchType.value === 'author' ? '搜索作者' : '搜索帖子或话题'
 ))
 
+async function ensureHotSuggestionsLoaded() {
+  if (hotSuggestionsLoaded.value) return
+
+  const data = await getHotPosts(HOT_SUGGESTION_LIMIT)
+  hotSuggestions.value = (data.posts || []).map((post, index) => ({
+    value: post.title,
+    postId: post.id,
+    rank: index + 1,
+    likeCount: post.like_count,
+    authorName: post.author_name,
+    kind: 'hot',
+  }))
+  hotSuggestionsLoaded.value = true
+}
+
+function loadSearchHistory() {
+  try {
+    const rawValue = localStorage.getItem(SEARCH_HISTORY_STORAGE_KEY)
+    const parsedValue = JSON.parse(rawValue || '[]')
+    if (!Array.isArray(parsedValue)) return []
+    return parsedValue
+      .filter((item) => item && typeof item.value === 'string' && typeof item.searchType === 'string')
+      .slice(0, SEARCH_HISTORY_LIMIT * 2)
+      .map((item) => ({
+        value: item.value.trim(),
+        searchType: item.searchType,
+        kind: 'history',
+      }))
+      .filter((item) => item.value)
+  } catch {
+    return []
+  }
+}
+
+function saveSearchHistory(keyword, type) {
+  const normalizedKeyword = String(keyword || '').trim()
+  if (!normalizedKeyword) return
+
+  const nextHistory = [
+    {
+      value: normalizedKeyword,
+      searchType: type,
+      kind: 'history',
+    },
+    ...searchHistory.value.filter((item) => !(item.value === normalizedKeyword && item.searchType === type)),
+  ]
+
+  const typeCounter = {}
+  searchHistory.value = nextHistory.filter((item) => {
+    const currentCount = typeCounter[item.searchType] || 0
+    if (currentCount >= SEARCH_HISTORY_LIMIT) {
+      return false
+    }
+    typeCounter[item.searchType] = currentCount + 1
+    return true
+  })
+
+  localStorage.setItem(
+    SEARCH_HISTORY_STORAGE_KEY,
+    JSON.stringify(searchHistory.value.map(({ value, searchType }) => ({ value, searchType }))),
+  )
+}
+
+function buildHistorySuggestions(keyword) {
+  const currentType = searchType.value
+  const lowerKeyword = keyword.toLowerCase()
+  return searchHistory.value
+    .filter((item) => item.searchType === currentType)
+    .filter((item) => !keyword || item.value.toLowerCase().includes(lowerKeyword))
+    .slice(0, SEARCH_HISTORY_LIMIT)
+}
+
+function buildHotSuggestions(keyword) {
+  const lowerKeyword = keyword.toLowerCase()
+  return hotSuggestions.value
+    .filter((item) => !keyword || item.value.toLowerCase().includes(lowerKeyword))
+    .slice(0, HOT_SUGGESTION_LIMIT)
+}
+
+async function fetchSearchSuggestions(queryString, callback) {
+  if (searchType.value !== 'post') {
+    callback(buildHistorySuggestions(String(queryString || '').trim()))
+    return
+  }
+
+  try {
+    await ensureHotSuggestionsLoaded()
+    const keyword = String(queryString || '').trim().toLowerCase()
+    const historySuggestions = buildHistorySuggestions(keyword)
+    const hotSuggestionsForView = buildHotSuggestions(keyword).map((item, index) => ({
+      ...item,
+      isFirstHot: historySuggestions.length > 0 && index === 0,
+    }))
+
+    callback([
+      ...historySuggestions,
+      ...hotSuggestionsForView,
+    ])
+  } catch {
+    callback(buildHistorySuggestions(String(queryString || '').trim()))
+  }
+}
+
 function handleSearch() {
   const keyword = searchQuery.value.trim()
   if (!keyword) return
+  saveSearchHistory(keyword, searchType.value)
   router.push({ path: '/search', query: { q: keyword, type: searchType.value } })
+}
+
+function handleSuggestionSelect(item) {
+  searchQuery.value = item.value
+  if (item.kind === 'history') {
+    saveSearchHistory(item.value, item.searchType)
+    router.push({ path: '/search', query: { q: item.value, type: item.searchType } })
+    return
+  }
+
+  saveSearchHistory(item.value, 'post')
+  router.push(`/posts/${item.postId}`)
 }
 
 function focusSearch() {
@@ -168,13 +314,16 @@ onBeforeUnmount(() => {
 
 .navbar-search {
   min-width: 0;
+  display: flex;
+  justify-content: center;
 }
 
 .search-shell {
   display: grid;
-  grid-template-columns: 122px minmax(0, 1fr);
-  gap: 10px;
-  padding: 8px;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px;
+  width: min(100%, 460px);
   border: 1px solid rgba(124, 58, 237, 0.1);
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.76);
@@ -182,8 +331,68 @@ onBeforeUnmount(() => {
 
 .search-type :deep(.el-select__wrapper),
 .search-input :deep(.el-input__wrapper) {
-  min-height: 46px;
+  min-height: 40px;
   background: #fff;
+  font-size: 13px;
+}
+
+.search-type :deep(.el-select__selected-item),
+.search-input :deep(.el-input__inner),
+.search-input :deep(.el-input__prefix-inner) {
+  font-size: 13px;
+}
+
+.search-suggestion {
+  display: grid;
+  gap: 4px;
+  padding: 3px 0;
+}
+
+.search-suggestion.is-first-hot {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(124, 58, 237, 0.12);
+}
+
+.suggestion-divider {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--kr-text-muted);
+}
+
+.suggestion-title {
+  color: var(--kr-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.suggestion-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--kr-text-muted);
+}
+
+.suggestion-source {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--kr-primary-strong);
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.suggestion-source.history {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
 }
 
 .navbar-right {
@@ -228,5 +437,16 @@ onBeforeUnmount(() => {
   .search-shell {
     grid-template-columns: 1fr;
   }
+}
+</style>
+
+<style>
+.search-suggestion-popper .el-scrollbar__wrap {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.search-suggestion-popper .el-scrollbar__bar {
+  display: none !important;
 }
 </style>

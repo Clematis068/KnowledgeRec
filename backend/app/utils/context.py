@@ -1,4 +1,5 @@
 from datetime import datetime
+from ipaddress import ip_address
 from zoneinfo import ZoneInfo
 
 
@@ -15,11 +16,23 @@ TIME_SLOT_WINDOWS = (
     ("evening", 18, 24),
 )
 
+REGION_HEADER_CANDIDATES = (
+    "CF-IPCountry",
+    "X-Vercel-IP-Country",
+    "X-Appengine-Country",
+    "X-Country-Code",
+    "X-Geo-Country",
+)
+
+INVALID_REGION_CODES = {"XX", "T1", "ZZ", "UNKNOWN"}
+
 
 def normalize_region_code(value):
     if not value:
         return None
     normalized = str(value).strip().upper().replace("_", "-")
+    if not normalized or normalized in INVALID_REGION_CODES:
+        return None
     return normalized[:32] or None
 
 
@@ -63,12 +76,52 @@ def normalize_context_targets(values, normalizer):
     return normalized
 
 
+def extract_client_ip(req):
+    forwarded_for = req.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        for candidate in forwarded_for.split(","):
+            ip_value = candidate.strip()
+            if ip_value:
+                return ip_value
+    return (
+        req.headers.get("X-Real-IP")
+        or req.headers.get("CF-Connecting-IP")
+        or req.remote_addr
+        or ""
+    ).strip()
+
+
+def is_public_ip(ip_value):
+    if not ip_value:
+        return False
+    try:
+        parsed_ip = ip_address(ip_value)
+    except ValueError:
+        return False
+    return not (
+        parsed_ip.is_private
+        or parsed_ip.is_loopback
+        or parsed_ip.is_link_local
+        or parsed_ip.is_reserved
+        or parsed_ip.is_multicast
+        or parsed_ip.is_unspecified
+    )
+
+
+def extract_region_from_headers(req):
+    for header_name in REGION_HEADER_CANDIDATES:
+        region_code = normalize_region_code(req.headers.get(header_name))
+        if region_code:
+            return region_code
+    return None
+
+
 def build_request_context(req, payload=None):
     payload = payload or {}
-    region = normalize_region_code(
-        req.headers.get("X-Client-Region")
-        or payload.get("login_region_code")
-        or req.args.get("login_region_code")
+    region = (
+        extract_region_from_headers(req)
+        or normalize_region_code(payload.get("login_region_code"))
+        or normalize_region_code(req.args.get("login_region_code"))
     )
     timezone_name = (
         req.headers.get("X-Client-Timezone")
@@ -83,20 +136,24 @@ def build_request_context(req, payload=None):
     if not time_slot:
         time_slot = derive_time_slot_by_timezone(timezone_name)
 
+    client_ip = extract_client_ip(req)
+
     return {
         "region_code": region,
         "timezone": (timezone_name or "").strip()[:64] or None,
         "time_slot": time_slot,
+        "client_ip": client_ip if is_public_ip(client_ip) else None,
     }
 
 
 def context_from_user(user):
     if not user:
-        return {"region_code": None, "timezone": None, "time_slot": None}
+        return {"region_code": None, "timezone": None, "time_slot": None, "client_ip": None}
     return {
         "region_code": normalize_region_code(getattr(user, "last_login_region", None)),
         "timezone": getattr(user, "last_login_timezone", None),
         "time_slot": normalize_time_slot(getattr(user, "last_login_time_slot", None)),
+        "client_ip": None,
     }
 
 
@@ -107,6 +164,7 @@ def resolve_effective_context(user=None, request_context=None):
         "region_code": request_context.get("region_code") or user_context.get("region_code"),
         "timezone": request_context.get("timezone") or user_context.get("timezone"),
         "time_slot": request_context.get("time_slot") or user_context.get("time_slot"),
+        "client_ip": request_context.get("client_ip") or user_context.get("client_ip"),
     }
 
 
