@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '../router'
+import { getClientContextHeaders } from '../utils/clientContext'
 
 const request = axios.create({
   baseURL: '/api',
@@ -10,6 +11,10 @@ const request = axios.create({
 // 请求拦截器：自动附加 JWT
 request.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
+  config.headers = {
+    ...(config.headers || {}),
+    ...getClientContextHeaders(),
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }

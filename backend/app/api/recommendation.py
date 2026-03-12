@@ -4,6 +4,7 @@ from app.models.post import Post
 from app.services.recommendation import recommendation_engine
 from app.services.qwen_service import qwen_service
 from app.utils.auth import login_required
+from app.utils.context import build_request_context
 
 rec_bp = Blueprint('recommendation', __name__)
 
@@ -15,6 +16,7 @@ def get_recommendations(user_id):
     enable_llm = request.args.get('enable_llm', 'true').lower() == 'true'
     enable_hot = request.args.get('enable_hot', 'true').lower() == 'true'
     debug = request.args.get('debug', 'false').lower() == 'true'
+    request_context = build_request_context(request)
 
     # 可选自定义权重
     w_cf = request.args.get('w_cf', type=float)
@@ -30,6 +32,7 @@ def get_recommendations(user_id):
             top_n=top_n,
             enable_llm=enable_llm,
             enable_hot=enable_hot,
+            request_context=request_context,
             weights=weights,
         )
 
@@ -58,6 +61,7 @@ def get_my_recommendations():
     enable_llm = request.args.get('enable_llm', 'true').lower() == 'true'
     enable_hot = request.args.get('enable_hot', 'true').lower() == 'true'
     debug = request.args.get('debug', 'false').lower() == 'true'
+    request_context = build_request_context(request)
 
     w_cf = request.args.get('w_cf', type=float)
     w_graph = request.args.get('w_graph', type=float)
@@ -72,6 +76,7 @@ def get_my_recommendations():
             top_n=top_n,
             enable_llm=enable_llm,
             enable_hot=enable_hot,
+            request_context=request_context,
             weights=weights,
         )
         for item in results:

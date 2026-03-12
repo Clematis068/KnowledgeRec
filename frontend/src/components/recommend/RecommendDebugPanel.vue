@@ -8,6 +8,14 @@ const ROUTE_META = {
   hot: { label: 'Hot 热门召回', color: '#f56c6c' },
 }
 
+const TIME_SLOT_LABELS = {
+  night: '夜间',
+  morning: '上午',
+  noon: '中午',
+  afternoon: '下午',
+  evening: '晚上',
+}
+
 const STAGE_LABELS = {
   cold: '冷启动',
   warm: '成长期',
@@ -57,6 +65,10 @@ function formatPercent(value) {
 function formatScore(value) {
   return Number(value || 0).toFixed(4)
 }
+
+function formatTimeSlot(value) {
+  return TIME_SLOT_LABELS[value] || value || '未提供'
+}
 </script>
 
 <template>
@@ -105,6 +117,14 @@ function formatScore(value) {
           <div class="metric-item">
             <span class="metric-label">负反馈过滤</span>
             <span class="metric-value">{{ debug.negative_feedback_applied ? '已开启' : '未开启' }}</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">上下文地区</span>
+            <span class="metric-value">{{ debug.context?.region_code || '未提供' }}</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">上下文时段</span>
+            <span class="metric-value">{{ formatTimeSlot(debug.context?.time_slot) }}</span>
           </div>
         </div>
         <el-empty v-else description="还没有调试数据，先刷新一次推荐" :image-size="72" />
@@ -192,6 +212,7 @@ function formatScore(value) {
               <span>Graph {{ formatScore(item.graph_score) }}</span>
               <span>Semantic {{ formatScore(item.semantic_score) }}</span>
               <span>Hot {{ formatScore(item.hot_score) }}</span>
+              <span>Context {{ formatScore(item.context_score) }}</span>
             </div>
           </div>
         </div>
@@ -215,6 +236,7 @@ function formatScore(value) {
               <span class="sample-score">{{ formatScore(item.final_score) }}</span>
             </div>
             <div class="preview-breakdown">
+              <span>Context {{ formatScore(item.context_score) }}</span>
               <span>Penalty {{ formatScore(item.negative_penalty) }}</span>
             </div>
           </div>

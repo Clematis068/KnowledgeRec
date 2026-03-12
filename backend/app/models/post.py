@@ -21,6 +21,8 @@ class Post(db.Model):
     view_count = db.Column(db.Integer, default=0)
     like_count = db.Column(db.Integer, default=0)
     content_embedding = db.Column(db.JSON)       # 1024d
+    target_regions = db.Column(db.JSON)
+    target_time_slots = db.Column(db.JSON)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -40,5 +42,7 @@ class Post(db.Model):
             'view_count': self.view_count,
             'like_count': self.like_count,
             'tags': [t.name for t in self.tags],
+            'target_regions': self.target_regions or [],
+            'target_time_slots': self.target_time_slots or [],
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

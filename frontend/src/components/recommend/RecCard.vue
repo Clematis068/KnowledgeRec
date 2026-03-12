@@ -19,6 +19,7 @@
       :graph-score="item.graph_score || 0"
       :semantic-score="item.semantic_score || 0"
       :hot-score="item.hot_score || 0"
+      :context-score="item.context_score || 0"
     />
 
     <div class="score-legend">
@@ -26,6 +27,13 @@
       <span class="legend graph">Graph {{ (item.graph_score || 0).toFixed(3) }}</span>
       <span class="legend semantic">Semantic {{ (item.semantic_score || 0).toFixed(3) }}</span>
       <span class="legend hot">Hot {{ (item.hot_score || 0).toFixed(3) }}</span>
+      <span class="legend context">Context {{ (item.context_score || 0).toFixed(3) }}</span>
+      <span
+        v-if="item.context_region_match || item.context_time_slot_match"
+        class="legend match"
+      >
+        {{ buildMatchLabel(item) }}
+      </span>
     </div>
 
     <div class="card-footer">
@@ -62,6 +70,19 @@ const displayScore = computed(() => {
   const score = props.item.final_score ?? props.item.score
   return score == null ? '--' : score.toFixed(4)
 })
+
+function buildMatchLabel(item) {
+  if (item.context_region_match && item.context_time_slot_match) {
+    return '地区 + 时段匹配'
+  }
+  if (item.context_region_match) {
+    return '地区匹配'
+  }
+  if (item.context_time_slot_match) {
+    return '时段匹配'
+  }
+  return '上下文匹配'
+}
 </script>
 
 <style scoped>
@@ -155,6 +176,15 @@ const displayScore = computed(() => {
 
 .hot::before {
   background: #f56c6c;
+}
+
+.context::before {
+  background: #8b5cf6;
+}
+
+.match {
+  color: #7c3aed;
+  font-weight: 600;
 }
 
 .card-footer {

@@ -22,6 +22,10 @@ class User(db.Model):
     bio = db.Column(db.Text)
     interest_embedding = db.Column(db.JSON)    # 1024-dim weighted avg of interacted posts
     interest_profile = db.Column(db.Text)       # LLM generated interest description
+    last_login_region = db.Column(db.String(32))
+    last_login_timezone = db.Column(db.String(64))
+    last_login_time_slot = db.Column(db.String(16))
+    last_active_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -46,5 +50,9 @@ class User(db.Model):
             'bio': self.bio,
             'interest_profile': self.interest_profile,
             'interest_tags': [t.to_dict() for t in self.interest_tags],
+            'last_login_region': self.last_login_region,
+            'last_login_timezone': self.last_login_timezone,
+            'last_login_time_slot': self.last_login_time_slot,
+            'last_active_at': self.last_active_at.isoformat() if self.last_active_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

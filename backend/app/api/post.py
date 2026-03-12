@@ -11,6 +11,7 @@ from app.models.tag import Tag
 from app.services.tag_taxonomy_service import tag_taxonomy_service
 from app.services.user_interest_service import user_interest_service
 from app.utils.auth import login_required, optional_login
+from app.utils.context import normalize_context_targets, normalize_region_code, normalize_time_slot
 from app.utils.content_filter import apply_post_visibility_query, is_post_visible_to_user
 
 post_bp = Blueprint('post', __name__)
@@ -119,6 +120,17 @@ def _delete_comment_relation_if_needed(user_id, post_id):
         pass
 
 
+def _apply_post_context_targets(post, data):
+    post.target_regions = normalize_context_targets(
+        data.get('target_regions', []),
+        normalize_region_code,
+    )
+    post.target_time_slots = normalize_context_targets(
+        data.get('target_time_slots', []),
+        normalize_time_slot,
+    )
+
+
 def _refresh_user_interest_if_needed(user_id, behavior_type=None, duration=None):
     """行为变更后刷新用户兴趣画像；浏览仅在停留较久时触发。"""
     should_refresh = behavior_type in ('like', 'favorite', 'comment', 'dislike')
@@ -159,6 +171,7 @@ def create_post():
 
     db.session.add(post)
     db.session.flush()
+    _apply_post_context_targets(post, data)
     _bind_post_tags(
         post,
         domain_id,
@@ -208,6 +221,7 @@ def update_post(post_id):
     post.title = title
     post.content = content
     post.domain_id = domain_id
+    _apply_post_context_targets(post, data)
     _bind_post_tags(
         post,
         domain_id,

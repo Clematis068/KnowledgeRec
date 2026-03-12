@@ -13,8 +13,16 @@ export function getPostDetail(postId) {
 }
 
 /** 更新帖子 */
-export function updatePost(postId, { title, content, domain_id, tag_ids, tags }) {
-  return request.put(`/post/${postId}`, { title, content, domain_id, tag_ids, tags })
+export function updatePost(postId, { title, content, domain_id, tag_ids, tags, target_regions, target_time_slots }) {
+  return request.put(`/post/${postId}`, {
+    title,
+    content,
+    domain_id,
+    tag_ids,
+    tags,
+    target_regions,
+    target_time_slots,
+  })
 }
 
 /** 删除帖子 */
@@ -95,8 +103,16 @@ export function unblockPostDomain(postId) {
 }
 
 /** 创建帖子 */
-export function createPost({ title, content, domain_id, tag_ids, tags }) {
-  return request.post('/post/create', { title, content, domain_id, tag_ids, tags })
+export function createPost({ title, content, domain_id, tag_ids, tags, target_regions, target_time_slots }) {
+  return request.post('/post/create', {
+    title,
+    content,
+    domain_id,
+    tag_ids,
+    tags,
+    target_regions,
+    target_time_slots,
+  })
 }
 
 /** 搜索帖子或用户 */

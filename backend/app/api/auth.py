@@ -10,6 +10,7 @@ from app.models.domain import Domain
 from app.services.mail_service import mail_service
 from app.services.redis_service import redis_service
 from app.services.tag_taxonomy_service import tag_taxonomy_service
+from app.utils.context import build_request_context, sync_user_login_context
 from app.utils.auth import generate_token, login_required
 
 auth_bp = Blueprint('auth', __name__)
@@ -61,6 +62,7 @@ def register():
     gender = data.get('gender')
     email = data.get('email', '').strip().lower()
     tag_ids = data.get('tag_ids', [])
+    login_context = build_request_context(request, data)
 
     if not username or not password:
         return jsonify({'error': '用户名和密码不能为空'}), 400
@@ -82,6 +84,7 @@ def register():
 
     user = User(username=username, gender=gender, email=email)
     user.set_password(password)
+    sync_user_login_context(user, login_context)
 
     # 绑定兴趣标签
     if tag_ids:
@@ -280,6 +283,7 @@ def login():
     data = request.get_json() or {}
     username = data.get('username', '').strip()
     password = data.get('password', '')
+    login_context = build_request_context(request, data)
 
     if not username or not password:
         return jsonify({'error': '用户名和密码不能为空'}), 400
@@ -288,6 +292,8 @@ def login():
     if not user or not user.check_password(password):
         return jsonify({'error': '用户名或密码错误'}), 401
 
+    sync_user_login_context(user, login_context)
+    db.session.commit()
     token = generate_token(user.id)
     return jsonify({'token': token, 'user': user.to_dict()})
 

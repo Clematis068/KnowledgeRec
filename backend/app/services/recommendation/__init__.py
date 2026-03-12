@@ -3,6 +3,7 @@ from app import db
 from app.models.behavior import UserBehavior
 from app.models.post import Post
 from app.utils.content_filter import get_blocked_author_ids, get_blocked_domain_ids
+from app.utils.context import compute_post_context_bonus, resolve_effective_context
 
 from .cf_engine import CFEngine
 from .graph_engine import GraphEngine
@@ -26,17 +27,18 @@ class RecommendationEngine:
         self.hot = HotEngine()
         self.fusion = FusionEngine()
 
-    def recommend(self, user_id, top_n=20, enable_llm=True, enable_hot=True, weights=None):
+    def recommend(self, user_id, top_n=20, enable_llm=True, enable_hot=True, request_context=None, weights=None):
         results, _ = self.recommend_with_debug(
             user_id,
             top_n=top_n,
             enable_llm=enable_llm,
             enable_hot=enable_hot,
+            request_context=request_context,
             weights=weights,
         )
         return results
 
-    def recommend_with_debug(self, user_id, top_n=20, enable_llm=True, enable_hot=True, weights=None):
+    def recommend_with_debug(self, user_id, top_n=20, enable_llm=True, enable_hot=True, request_context=None, weights=None):
         """
         完整三路融合推荐
         1. 协同过滤 -> cf_scores
@@ -76,10 +78,14 @@ class RecommendationEngine:
             top_n,
             weights=resolved_weights,
         )
-        final_results = self._apply_negative_feedback(user_id, results, top_n)
+        resolved_context = self._resolve_context(user_id, request_context)
+        context_results = self._apply_context_bonus(results, resolved_context)
+        final_results = self._apply_negative_feedback(user_id, context_results, top_n)
         final_post_ids = {item['post_id'] for item in final_results}
         debug_info['negative_feedback_applied'] = True
         debug_info['hot_enabled'] = bool(enable_hot)
+        debug_info['context'] = resolved_context
+        debug_info['context_enabled'] = bool(resolved_context.get('region_code') or resolved_context.get('time_slot'))
         debug_info['result_count_before_filter'] = len(results)
         debug_info['result_count_after_filter'] = len(final_results)
         debug_info['route_samples'] = {
@@ -158,6 +164,36 @@ class RecommendationEngine:
 
         rescored_results.sort(key=lambda result: -result['final_score'])
         return rescored_results[:top_n]
+
+    def _resolve_context(self, user_id, request_context=None):
+        from app.models.user import User
+
+        user = db.session.get(User, user_id)
+        return resolve_effective_context(user=user, request_context=request_context)
+
+    def _apply_context_bonus(self, results, context):
+        if not results:
+            return results
+
+        if not context.get('region_code') and not context.get('time_slot'):
+            return results
+
+        rescored_results = []
+        for item in results:
+            post = db.session.get(Post, item['post_id'])
+            if not post:
+                continue
+
+            bonus, matches = compute_post_context_bonus(post, context)
+            updated_item = dict(item)
+            updated_item['context_score'] = round(bonus, 4)
+            updated_item['context_region_match'] = matches['region_match']
+            updated_item['context_time_slot_match'] = matches['time_slot_match']
+            updated_item['final_score'] = round(item['final_score'] + bonus, 4)
+            rescored_results.append(updated_item)
+
+        rescored_results.sort(key=lambda result: -result['final_score'])
+        return rescored_results
 
     def _resolve_weights(self, user_id, cf_scores, graph_scores, semantic_scores, hot_scores, requested_weights=None):
         stage = self._get_user_stage(user_id)
@@ -269,6 +305,7 @@ class RecommendationEngine:
                 'graph_score': round(item.get('graph_score', 0.0), 4),
                 'semantic_score': round(item.get('semantic_score', 0.0), 4),
                 'hot_score': round(item.get('hot_score', 0.0), 4),
+                'context_score': round(item.get('context_score', 0.0), 4),
                 'negative_penalty': round(item.get('negative_penalty', 0.0), 4),
             })
         return preview

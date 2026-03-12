@@ -20,6 +20,11 @@
       :style="{ width: pct(hotScore) }"
       :title="`Hot: ${hotScore.toFixed(4)}`"
     />
+    <div
+      class="segment context"
+      :style="{ width: pct(contextScore) }"
+      :title="`Context: ${contextScore.toFixed(4)}`"
+    />
   </div>
 </template>
 
@@ -31,10 +36,11 @@ const props = defineProps({
   graphScore: { type: Number, default: 0 },
   semanticScore: { type: Number, default: 0 },
   hotScore: { type: Number, default: 0 },
+  contextScore: { type: Number, default: 0 },
 })
 
 const total = computed(() => (
-  props.cfScore + props.graphScore + props.semanticScore + props.hotScore || 1
+  props.cfScore + props.graphScore + props.semanticScore + props.hotScore + props.contextScore || 1
 ))
 
 function pct(val) {
@@ -60,4 +66,5 @@ function pct(val) {
 .graph { background: #67c23a; }
 .semantic { background: #e6a23c; }
 .hot { background: #f56c6c; }
+.context { background: #8b5cf6; }
 </style>
