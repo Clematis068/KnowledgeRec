@@ -12,11 +12,12 @@ from .graph_engine import GraphEngine
 from .hot_engine import HotEngine
 from .semantic_engine import SemanticEngine
 from .fusion import FusionEngine
+from .swing_engine import SwingEngine
 
 USER_STAGE_WEIGHTS = {
-    'cold': {'cf': 0.00, 'graph': 0.28, 'semantic': 0.30, 'hot': 0.42},
-    'warm': {'cf': 0.18, 'graph': 0.32, 'semantic': 0.28, 'hot': 0.22},
-    'active': {'cf': 0.40, 'graph': 0.27, 'semantic': 0.23, 'hot': 0.10},
+    'cold': {'cf': 0.00, 'swing': 0.00, 'graph': 0.28, 'semantic': 0.30, 'hot': 0.42},
+    'warm': {'cf': 0.16, 'swing': 0.06, 'graph': 0.30, 'semantic': 0.26, 'hot': 0.22},
+    'active': {'cf': 0.31, 'swing': 0.08, 'graph': 0.27, 'semantic': 0.24, 'hot': 0.10},
 }
 
 MAX_SAME_AUTHOR = 2
@@ -33,6 +34,7 @@ class RecommendationEngine:
 
     def __init__(self):
         self.cf = CFEngine()
+        self.swing = SwingEngine()
         self.graph = GraphEngine()
         self.semantic = SemanticEngine()
         self.hot = HotEngine()
@@ -47,6 +49,7 @@ class RecommendationEngine:
         request_context=None,
         weights=None,
         enable_exploration=True,
+        enable_swing=True,
     ):
         results, _ = self.recommend_with_debug(
             user_id,
@@ -56,6 +59,7 @@ class RecommendationEngine:
             request_context=request_context,
             weights=weights,
             enable_exploration=enable_exploration,
+            enable_swing=enable_swing,
         )
         return results
 
@@ -68,34 +72,40 @@ class RecommendationEngine:
         request_context=None,
         weights=None,
         enable_exploration=True,
+        enable_swing=True,
     ):
         """
         完整三路融合推荐
         1. 协同过滤 -> cf_scores
-        2. 图谱传播 -> graph_scores
-        3. 语义增强独立召回 -> semantic_scores
-        4. 加权融合 -> fusion ranking
-        5. 滑动窗口打散
-        6. 轻量探索插入
+        2. Swing 小圈子召回 -> swing_scores
+        3. 图谱传播 -> graph_scores
+        4. 语义增强独立召回 -> semantic_scores
+        5. 加权融合 -> fusion ranking
+        6. 滑动窗口打散
+        7. 轻量探索插入
         """
         # Pipeline A: 协同过滤
         cf_scores = self.cf.recommend(user_id)
 
-        # Pipeline B: 知识图谱传播
+        # Pipeline B: Swing 小圈子召回
+        swing_scores = self.swing.recommend(user_id) if enable_swing else {}
+
+        # Pipeline C: 知识图谱传播
         graph_scores = self.graph.recommend(user_id)
 
-        # Pipeline C: 语义增强独立召回，不再只对 CF/Graph 做 rerank
+        # Pipeline D: 语义增强独立召回，不再只对 CF/Graph 做 rerank
         semantic_scores = self.semantic.recommend(
             user_id,
             enable_llm_rerank=enable_llm,
         )
 
-        # Pipeline D: 热门召回，缓解冷启动和候选不足
+        # Pipeline E: 热门召回，缓解冷启动和候选不足
         hot_scores = self.hot.recommend(user_id) if enable_hot else {}
 
         resolved_weights, debug_info = self._resolve_weights(
             user_id,
             cf_scores,
+            swing_scores,
             graph_scores,
             semantic_scores,
             hot_scores,
@@ -105,6 +115,7 @@ class RecommendationEngine:
         buffer_n = max(top_n * DIVERSITY_BUFFER_MULTIPLIER, top_n)
         results = self.fusion.fuse_with_details(
             cf_scores,
+            swing_scores,
             graph_scores,
             semantic_scores,
             hot_scores,
@@ -128,6 +139,7 @@ class RecommendationEngine:
         debug_info['diversity_applied'] = True
         debug_info['diversity_limits'] = self._get_diversity_limits(debug_info.get('user_stage', 'unknown'))
         debug_info['exploration_enabled'] = bool(enable_exploration)
+        debug_info['swing_enabled'] = bool(enable_swing)
         debug_info['hot_enabled'] = bool(enable_hot)
         debug_info['context'] = resolved_context
         debug_info['context_enabled'] = bool(resolved_context.get('region_code') or resolved_context.get('time_slot'))
@@ -137,6 +149,7 @@ class RecommendationEngine:
         debug_info['result_count_after_filter'] = len(final_results)
         debug_info['route_samples'] = {
             'cf': self._build_route_samples(cf_scores, final_post_ids),
+            'swing': self._build_route_samples(swing_scores, final_post_ids),
             'graph': self._build_route_samples(graph_scores, final_post_ids),
             'semantic': self._build_route_samples(semantic_scores, final_post_ids),
             'hot': self._build_route_samples(hot_scores, final_post_ids),
@@ -150,6 +163,7 @@ class RecommendationEngine:
         """离线预计算（物品相似度矩阵等）"""
         print("开始预计算...")
         self.cf.precompute_item_similarity()
+        self.swing.precompute_item_similarity()
         print("预计算完成")
 
     def _apply_negative_feedback(self, user_id, results, top_n):
@@ -328,27 +342,32 @@ class RecommendationEngine:
         rescored_results.sort(key=lambda result: -result['final_score'])
         return rescored_results
 
-    def _resolve_weights(self, user_id, cf_scores, graph_scores, semantic_scores, hot_scores, requested_weights=None):
+    def _resolve_weights(self, user_id, cf_scores, swing_scores, graph_scores, semantic_scores, hot_scores, requested_weights=None):
         stage = self._get_user_stage(user_id)
         if requested_weights:
             hot_weight = USER_STAGE_WEIGHTS[stage].get('hot', 0.0)
             normalized_requested = self.fusion._normalize_weights({
                 'cf': requested_weights.get('cf', 0.0),
+                'swing': requested_weights.get('swing', 0.0),
                 'graph': requested_weights.get('graph', 0.0),
                 'semantic': requested_weights.get('semantic', 0.0),
             })
             remaining_weight = max(1.0 - hot_weight, 0.0)
             base_weights = {
                 'cf': normalized_requested['cf'] * remaining_weight,
+                'swing': normalized_requested['swing'] * remaining_weight,
                 'graph': normalized_requested['graph'] * remaining_weight,
                 'semantic': normalized_requested['semantic'] * remaining_weight,
                 'hot': hot_weight,
             }
         else:
-            base_weights = USER_STAGE_WEIGHTS[stage]
+            base_weights = dict(USER_STAGE_WEIGHTS[stage])
+            if swing_scores:
+                base_weights['swing'] *= self._estimate_swing_weight_factor(swing_scores)
         normalized = self.fusion._normalize_weights(base_weights)
         availability = {
             'cf': bool(cf_scores),
+            'swing': bool(swing_scores),
             'graph': bool(graph_scores),
             'semantic': bool(semantic_scores),
             'hot': bool(hot_scores),
@@ -363,6 +382,7 @@ class RecommendationEngine:
                 'route_availability': availability,
                 'route_counts': {
                     'cf': len(cf_scores),
+                    'swing': len(swing_scores),
                     'graph': len(graph_scores),
                     'semantic': len(semantic_scores),
                     'hot': len(hot_scores),
@@ -399,12 +419,23 @@ class RecommendationEngine:
             'route_availability': availability,
             'route_counts': {
                 'cf': len(cf_scores),
+                'swing': len(swing_scores),
                 'graph': len(graph_scores),
                 'semantic': len(semantic_scores),
                 'hot': len(hot_scores),
             },
         }
         return used_weights, debug_info
+
+    def _estimate_swing_weight_factor(self, swing_scores):
+        if not swing_scores:
+            return 0.0
+
+        top_scores = sorted(swing_scores.values(), reverse=True)[:10]
+        avg_score = sum(top_scores) / len(top_scores)
+        coverage = min(len(swing_scores) / 80.0, 1.0)
+        confidence = avg_score * coverage
+        return max(0.2, min(confidence, 1.0))
 
     def _build_route_samples(self, scores, selected_post_ids, limit=5):
         ranked = sorted(scores.items(), key=lambda item: -item[1])[:limit]
@@ -435,6 +466,7 @@ class RecommendationEngine:
                 'title': post.title,
                 'final_score': round(item.get('final_score', 0.0), 4),
                 'cf_score': round(item.get('cf_score', 0.0), 4),
+                'swing_score': round(item.get('swing_score', 0.0), 4),
                 'graph_score': round(item.get('graph_score', 0.0), 4),
                 'semantic_score': round(item.get('semantic_score', 0.0), 4),
                 'hot_score': round(item.get('hot_score', 0.0), 4),

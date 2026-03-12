@@ -1,7 +1,7 @@
 """
 消融实验评估脚本
 评估指标: Precision@K, Recall@K, NDCG@K
-消融配置: 单通道 / 双通道组合 / 完整三路融合
+消融配置: 单通道 / 双通道组合 / 完整多路融合
 
 用法: cd backend && uv run python -m scripts.evaluate
 """
@@ -20,13 +20,17 @@ from app.services.recommendation import recommendation_engine
 
 # 消融实验配置
 ABLATION_CONFIGS = {
-    "CF_only":       {'cf': 1.0, 'graph': 0.0, 'semantic': 0.0},
-    "Graph_only":    {'cf': 0.0, 'graph': 1.0, 'semantic': 0.0},
-    "Semantic_only": {'cf': 0.0, 'graph': 0.0, 'semantic': 1.0},
-    "CF+Graph":      {'cf': 0.5, 'graph': 0.5, 'semantic': 0.0},
-    "CF+Semantic":   {'cf': 0.5, 'graph': 0.0, 'semantic': 0.5},
-    "Graph+Semantic": {'cf': 0.0, 'graph': 0.5, 'semantic': 0.5},
-    "Full_Fusion":   {'cf': 0.35, 'graph': 0.35, 'semantic': 0.30},
+    "CF_only":          {'cf': 1.0, 'swing': 0.0, 'graph': 0.0, 'semantic': 0.0},
+    "Swing_only":       {'cf': 0.0, 'swing': 1.0, 'graph': 0.0, 'semantic': 0.0},
+    "Graph_only":       {'cf': 0.0, 'swing': 0.0, 'graph': 1.0, 'semantic': 0.0},
+    "Semantic_only":    {'cf': 0.0, 'swing': 0.0, 'graph': 0.0, 'semantic': 1.0},
+    "CF+Swing":         {'cf': 0.5, 'swing': 0.5, 'graph': 0.0, 'semantic': 0.0},
+    "CF+Graph":         {'cf': 0.5, 'swing': 0.0, 'graph': 0.5, 'semantic': 0.0},
+    "CF+Semantic":      {'cf': 0.5, 'swing': 0.0, 'graph': 0.0, 'semantic': 0.5},
+    "Swing+Graph":      {'cf': 0.0, 'swing': 0.5, 'graph': 0.5, 'semantic': 0.0},
+    "Swing+Semantic":   {'cf': 0.0, 'swing': 0.5, 'graph': 0.0, 'semantic': 0.5},
+    "Graph+Semantic":   {'cf': 0.0, 'swing': 0.0, 'graph': 0.5, 'semantic': 0.5},
+    "Full_Fusion":      {'cf': 0.28, 'swing': 0.12, 'graph': 0.32, 'semantic': 0.28},
 }
 
 K_VALUES = [5, 10, 20]

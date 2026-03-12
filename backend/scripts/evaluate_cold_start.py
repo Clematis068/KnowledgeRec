@@ -51,6 +51,7 @@ def parse_args():
     parser.add_argument("--k", type=int, nargs="+", default=[5, 10, 20], help="评估的 K 值")
     parser.add_argument("--report-dir", default="reports/evaluation", help="评估报告输出目录（相对 backend/）")
     parser.add_argument("--disable-exploration", action="store_true", help="评估时关闭探索插入，仅保留主召回 + 打散")
+    parser.add_argument("--disable-swing", action="store_true", help="评估时关闭 Swing 召回，便于做增量对比")
     return parser.parse_args()
 
 
@@ -264,7 +265,7 @@ def weighted_domain_recall_at_k(recommended_posts, domain_weights, k):
     return covered_weight / total_weight if total_weight > 0 else 0.0
 
 
-def evaluate_interest_alignment(users, all_posts, enable_hot, k_values, enable_exploration):
+def evaluate_interest_alignment(users, all_posts, enable_hot, k_values, enable_exploration, enable_swing):
     metrics = {
         k: {
             "precision": [],
@@ -287,6 +288,7 @@ def evaluate_interest_alignment(users, all_posts, enable_hot, k_values, enable_e
                 enable_llm=False,
                 enable_hot=enable_hot,
                 enable_exploration=enable_exploration,
+                enable_swing=enable_swing,
             )
         except Exception:
             continue
@@ -309,7 +311,7 @@ def evaluate_interest_alignment(users, all_posts, enable_hot, k_values, enable_e
     return average_metric_lists(metrics)
 
 
-def evaluate_behavior_impact(users, all_posts, enable_hot, k_values, history_limit, enable_exploration):
+def evaluate_behavior_impact(users, all_posts, enable_hot, k_values, history_limit, enable_exploration, enable_swing):
     metrics = {
         k: {
             "behavior_ndcg": [],
@@ -324,6 +326,7 @@ def evaluate_behavior_impact(users, all_posts, enable_hot, k_values, history_lim
             "users": 0,
             "behavior_count": 0.0,
             "cf": 0.0,
+            "swing": 0.0,
             "graph": 0.0,
             "semantic": 0.0,
             "hot": 0.0,
@@ -342,6 +345,7 @@ def evaluate_behavior_impact(users, all_posts, enable_hot, k_values, history_lim
                 enable_llm=False,
                 enable_hot=enable_hot,
                 enable_exploration=enable_exploration,
+                enable_swing=enable_swing,
             )
         except Exception:
             continue
@@ -369,6 +373,7 @@ def evaluate_behavior_impact(users, all_posts, enable_hot, k_values, history_lim
         stage_stats[stage]["users"] += 1
         stage_stats[stage]["behavior_count"] += profile["behavior_count"]
         stage_stats[stage]["cf"] += weights_used.get("cf", 0.0)
+        stage_stats[stage]["swing"] += weights_used.get("swing", 0.0)
         stage_stats[stage]["graph"] += weights_used.get("graph", 0.0)
         stage_stats[stage]["semantic"] += weights_used.get("semantic", 0.0)
         stage_stats[stage]["hot"] += weights_used.get("hot", 0.0)
@@ -406,6 +411,7 @@ def finalize_stage_stats(stage_stats):
             "users": users,
             "avg_behavior_count": values["behavior_count"] / users,
             "cf": values["cf"] / users,
+            "swing": values["swing"] / users,
             "graph": values["graph"] / users,
             "semantic": values["semantic"] / users,
             "hot": values["hot"] / users,
@@ -462,10 +468,10 @@ def print_stage_summary(stage_stats):
         return
 
     order = ["cold", "warm", "active", "unknown"]
-    print("\n" + "=" * 84)
+    print("\n" + "=" * 96)
     print("行为用户阶段汇总（with_hot 配置）")
-    print(f"{'阶段':<10}| {'用户数':<6} {'平均行为数':<10} {'CF':<6} {'Graph':<6} {'Semantic':<9} {'Hot':<6}")
-    print("-" * 84)
+    print(f"{'阶段':<10}| {'用户数':<6} {'平均行为数':<10} {'CF':<6} {'Swing':<6} {'Graph':<6} {'Semantic':<9} {'Hot':<6}")
+    print("-" * 96)
 
     for stage in order:
         if stage not in stage_stats:
@@ -473,9 +479,9 @@ def print_stage_summary(stage_stats):
         item = stage_stats[stage]
         print(
             f"{stage:<10}| {item['users']:<6} {item['avg_behavior_count']:<10.2f} "
-            f"{item['cf']:<6.4f} {item['graph']:<6.4f} {item['semantic']:<9.4f} {item['hot']:<6.4f}"
+            f"{item['cf']:<6.4f} {item['swing']:<6.4f} {item['graph']:<6.4f} {item['semantic']:<9.4f} {item['hot']:<6.4f}"
         )
-    print("=" * 84)
+    print("=" * 96)
 
 
 def ensure_dir(path):
@@ -535,6 +541,7 @@ def build_stage_rows(stage_stats):
             item["users"],
             round(item["avg_behavior_count"], 4),
             round(item["cf"], 6),
+            round(item["swing"], 6),
             round(item["graph"], 6),
             round(item["semantic"], 6),
             round(item["hot"], 6),
@@ -586,7 +593,7 @@ def write_behavior_report(path, all_results, stage_stats, k_values, args, user_c
     metric_rows = build_behavior_rows(all_results, k_values)
     stage_rows = build_stage_rows(stage_stats)
     metric_headers = ["配置", "K", "BehaviorNDCG@K", "BehaviorAlign@K", "BehaviorTagRecall@K", "BehaviorDomainRecall@K", "样本数"]
-    stage_headers = ["阶段", "用户数", "平均行为数", "CF", "Graph", "Semantic", "Hot"]
+    stage_headers = ["阶段", "用户数", "平均行为数", "CF", "Swing", "Graph", "Semantic", "Hot"]
     content = [
         "# 行为影响评估报告",
         "",
@@ -639,7 +646,7 @@ def write_reports(report_dir, interest_results, behavior_results, stage_summary,
         )
         write_csv(
             os.path.join(report_dir, "stage_weight_summary.csv"),
-            ["stage", "users", "avg_behavior_count", "cf", "graph", "semantic", "hot"],
+            ["stage", "users", "avg_behavior_count", "cf", "swing", "graph", "semantic", "hot"],
             build_stage_rows(stage_summary),
         )
         write_behavior_report(
@@ -671,6 +678,7 @@ def main():
         print(f"行为画像回看条数: {args.behavior_history_limit}")
         print(f"K 值: {args.k}")
         print(f"探索插入: {not args.disable_exploration}")
+        print(f"Swing召回: {not args.disable_swing}")
 
         if not interest_users:
             print("\n未找到符合条件的冷启动/低行为用户，可调大 --max-behaviors 再试")
@@ -686,7 +694,12 @@ def main():
 
             if interest_users:
                 interest_results[config_name] = evaluate_interest_alignment(
-                    interest_users, all_posts, enable_hot, args.k, not args.disable_exploration
+                    interest_users,
+                    all_posts,
+                    enable_hot,
+                    args.k,
+                    not args.disable_exploration,
+                    not args.disable_swing,
                 )
 
             if behavior_users:
@@ -697,6 +710,7 @@ def main():
                     args.k,
                     args.behavior_history_limit,
                     not args.disable_exploration,
+                    not args.disable_swing,
                 )
                 if config_name == "with_hot":
                     stage_summary = summary
