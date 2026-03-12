@@ -1,6 +1,7 @@
-"""Pipeline A: 基于物品的协同过滤 (Item-Based CF + IUF加权)"""
+"""Pipeline A: 基于物品的协同过滤 (Item-Based CF + IUF加权 + 时间衰减)"""
 import math
 from collections import defaultdict
+from datetime import datetime
 
 from app import db
 from app.models.behavior import UserBehavior
@@ -13,6 +14,8 @@ BEHAVIOR_WEIGHTS = {
     'favorite': 5.0,
     'comment': 4.0,
 }
+
+TIME_DECAY_LAMBDA = 0.03
 
 ITEM_SIM_TTL = 30 * 86400
 
@@ -103,8 +106,13 @@ class CFEngine:
 
     def _behavior_score(self, behavior):
         if behavior.behavior_type == 'browse':
-            return BEHAVIOR_WEIGHTS['browse'] * min((behavior.duration or 30) / 60.0, 3.0)
-        return BEHAVIOR_WEIGHTS.get(behavior.behavior_type, 1.0)
+            base = BEHAVIOR_WEIGHTS['browse'] * min((behavior.duration or 30) / 60.0, 3.0)
+        else:
+            base = BEHAVIOR_WEIGHTS.get(behavior.behavior_type, 1.0)
+        if behavior.created_at:
+            age_days = (datetime.now() - behavior.created_at).days
+            base *= math.exp(-TIME_DECAY_LAMBDA * age_days)
+        return base
 
     def _build_interaction_matrices(self, behaviors):
         user_items = defaultdict(dict)   # {user_id: {post_id: score}}
