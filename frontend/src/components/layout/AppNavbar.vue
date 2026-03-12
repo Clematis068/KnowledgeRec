@@ -32,19 +32,25 @@
           @select="handleSuggestionSelect"
         >
           <template #default="{ item }">
-            <div :class="['search-suggestion', { 'is-first-hot': item.isFirstHot }]">
+            <div :class="['search-suggestion', { 'is-first-hot': item.isFirstHot, 'is-action': item.kind === 'clear-history' }]">
+              <span v-if="item.isFirstHistory" class="suggestion-divider">搜索历史</span>
               <span v-if="item.isFirstHot" class="suggestion-divider">热门内容</span>
-              <span class="suggestion-title">{{ item.value }}</span>
-              <span class="suggestion-meta">
-                <span :class="['suggestion-source', item.kind]">
-                  {{ item.kind === 'history' ? '搜索历史' : '热搜' }}
+              <template v-if="item.kind === 'clear-history'">
+                <span class="suggestion-action">{{ item.value }}</span>
+              </template>
+              <template v-else>
+                <span class="suggestion-title">{{ item.value }}</span>
+                <span class="suggestion-meta">
+                  <span :class="['suggestion-source', item.kind]">
+                    {{ item.kind === 'history' ? '搜索历史' : '热搜' }}
+                  </span>
+                  <template v-if="item.kind === 'hot'">
+                    <span>#{{ item.rank }}</span>
+                    <span>{{ item.authorName || '匿名作者' }}</span>
+                    <span>{{ item.likeCount || 0 }} 赞</span>
+                  </template>
                 </span>
-                <template v-if="item.kind === 'hot'">
-                  <span>#{{ item.rank }}</span>
-                  <span>{{ item.authorName || '匿名作者' }}</span>
-                  <span>{{ item.likeCount || 0 }} 赞</span>
-                </template>
-              </span>
+              </template>
             </div>
           </template>
         </el-autocomplete>
@@ -181,6 +187,14 @@ function buildHistorySuggestions(keyword) {
     .slice(0, SEARCH_HISTORY_LIMIT)
 }
 
+function clearSearchHistory(type) {
+  searchHistory.value = searchHistory.value.filter((item) => item.searchType !== type)
+  localStorage.setItem(
+    SEARCH_HISTORY_STORAGE_KEY,
+    JSON.stringify(searchHistory.value.map(({ value, searchType }) => ({ value, searchType }))),
+  )
+}
+
 function buildHotSuggestions(keyword) {
   const lowerKeyword = keyword.toLowerCase()
   return hotSuggestions.value
@@ -189,26 +203,49 @@ function buildHotSuggestions(keyword) {
 }
 
 async function fetchSearchSuggestions(queryString, callback) {
+  const rawKeyword = String(queryString || '').trim()
   if (searchType.value !== 'post') {
-    callback(buildHistorySuggestions(String(queryString || '').trim()))
+    const historySuggestions = buildHistorySuggestions(rawKeyword).map((item, index) => ({
+      ...item,
+      isFirstHistory: index === 0,
+    }))
+    if (historySuggestions.length > 0 && !rawKeyword) {
+      historySuggestions.push({
+        kind: 'clear-history',
+        value: '清空搜索历史',
+        searchType: searchType.value,
+      })
+    }
+    callback(historySuggestions)
     return
   }
 
   try {
     await ensureHotSuggestionsLoaded()
-    const keyword = String(queryString || '').trim().toLowerCase()
-    const historySuggestions = buildHistorySuggestions(keyword)
+    const keyword = rawKeyword.toLowerCase()
+    const historySuggestions = buildHistorySuggestions(keyword).map((item, index) => ({
+      ...item,
+      isFirstHistory: index === 0,
+    }))
     const hotSuggestionsForView = buildHotSuggestions(keyword).map((item, index) => ({
       ...item,
       isFirstHot: historySuggestions.length > 0 && index === 0,
     }))
+
+    if (historySuggestions.length > 0 && !rawKeyword) {
+      historySuggestions.push({
+        kind: 'clear-history',
+        value: '清空搜索历史',
+        searchType: searchType.value,
+      })
+    }
 
     callback([
       ...historySuggestions,
       ...hotSuggestionsForView,
     ])
   } catch {
-    callback(buildHistorySuggestions(String(queryString || '').trim()))
+    callback(buildHistorySuggestions(rawKeyword))
   }
 }
 
@@ -220,6 +257,12 @@ function handleSearch() {
 }
 
 function handleSuggestionSelect(item) {
+  if (item.kind === 'clear-history') {
+    clearSearchHistory(item.searchType || searchType.value)
+    searchQuery.value = ''
+    return
+  }
+
   searchQuery.value = item.value
   if (item.kind === 'history') {
     saveSearchHistory(item.value, item.searchType)
@@ -348,6 +391,10 @@ onBeforeUnmount(() => {
   padding: 3px 0;
 }
 
+.search-suggestion.is-action {
+  gap: 0;
+}
+
 .search-suggestion.is-first-hot {
   margin-top: 6px;
   padding-top: 10px;
@@ -393,6 +440,12 @@ onBeforeUnmount(() => {
 .suggestion-source.history {
   color: #2563eb;
   background: rgba(37, 99, 235, 0.1);
+}
+
+.suggestion-action {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .navbar-right {
