@@ -5,7 +5,6 @@ import { ElMessage } from 'element-plus'
 
 import { createPost } from '../api/post'
 import { useDomains } from '../composables/useDomains'
-import { REGION_OPTIONS, TIME_SLOT_OPTIONS } from '../constants/context'
 
 const router = useRouter()
 const { domains, fetchDomains } = useDomains()
@@ -21,8 +20,6 @@ const form = ref({
   title: '',
   domain_id: null,
   tags: [],
-  target_regions: [],
-  target_time_slots: [],
   content: '',
 })
 
@@ -121,31 +118,6 @@ onMounted(fetchDomains)
           />
           <el-button v-else size="small" @click="showTagInput">+ 添加标签</el-button>
         </div>
-      </el-form-item>
-
-      <el-form-item label="适配地区">
-        <el-select
-          v-model="form.target_regions"
-          multiple
-          filterable
-          allow-create
-          default-first-option
-          placeholder="不填则走通用推荐"
-          style="width: 100%"
-        >
-          <el-option v-for="region in REGION_OPTIONS" :key="region.value" :label="region.label" :value="region.value" />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="适配时间段">
-        <el-select
-          v-model="form.target_time_slots"
-          multiple
-          placeholder="例如适合早上或晚上阅读"
-          style="width: 100%"
-        >
-          <el-option v-for="slot in TIME_SLOT_OPTIONS" :key="slot.value" :label="slot.label" :value="slot.value" />
-        </el-select>
       </el-form-item>
 
       <el-form-item label="正文" prop="content">
