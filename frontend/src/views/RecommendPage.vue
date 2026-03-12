@@ -32,9 +32,6 @@
           <el-button type="primary" :icon="Refresh" :loading="loading" @click="fetchCurrentFeed">
             刷新
           </el-button>
-          <el-button plain :icon="Operation" @click="showSettings = !showSettings">
-            {{ showSettings ? '收起调参' : '调参' }}
-          </el-button>
           <el-button
             text
             :icon="View"
@@ -54,27 +51,8 @@
             <span class="toolbar-kicker">Feed</span>
             <h2>内容流</h2>
           </div>
-          <el-tag size="small" effect="plain" class="selection-tag">
-            {{ isOwnSelection ? '我的视角' : `演示用户 #${selectedUserId || '-'}` }}
-          </el-tag>
+          <el-tag size="small" effect="plain" class="selection-tag">我的视角</el-tag>
         </div>
-
-        <el-card v-show="showSettings" class="settings-panel" shadow="never">
-          <el-form :inline="true" size="small" class="settings-form">
-            <el-form-item label="演示用户">
-              <UserSelector v-model="selectedUserId" />
-            </el-form-item>
-            <el-form-item label="融合权重">
-              <WeightSlider @update:weights="onWeightsChange" />
-            </el-form-item>
-            <el-form-item label="数量">
-              <el-input-number v-model="topN" :min="5" :max="50" :step="5" />
-            </el-form-item>
-            <el-form-item label="LLM重排">
-              <el-switch v-model="enableLlm" active-text="开" inactive-text="关" />
-            </el-form-item>
-          </el-form>
-        </el-card>
 
         <div class="tabs-card">
           <el-tabs v-model="activeFeed" class="feed-tabs" @tab-change="handleTabChange">
@@ -120,9 +98,8 @@
           <h3>{{ currentFeedTitle }}</h3>
           <p>{{ currentFeedDescription }}</p>
           <div class="insight-pills">
-            <span class="insight-pill">{{ selectionLabel }}</span>
+            <span class="insight-pill">我的推荐</span>
             <span class="insight-pill">Top {{ topN }}</span>
-            <span class="insight-pill">{{ enableLlm ? 'LLM 开' : 'LLM 关' }}</span>
           </div>
         </el-card>
       </aside>
@@ -139,13 +116,11 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { Refresh, Operation, View } from '@element-plus/icons-vue'
+import { Refresh, View } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getRecommendations, getMyRecommendations } from '../api/recommendation'
 import { getFollowingPosts, getPostList, recordBehavior } from '../api/post'
 import { useAuthStore } from '../stores/auth'
-import WeightSlider from '../components/recommend/WeightSlider.vue'
-import UserSelector from '../components/recommend/UserSelector.vue'
 import RecCard from '../components/recommend/RecCard.vue'
 import RecReasonDialog from '../components/recommend/RecReasonDialog.vue'
 import RecommendDebugPanel from '../components/recommend/RecommendDebugPanel.vue'
@@ -155,12 +130,9 @@ const authStore = useAuthStore()
 
 const activeFeed = ref('recommend')
 const topN = ref(20)
-const weights = ref({ cf: 0.35, graph: 0.35, semantic: 0.3 })
 const loading = ref(false)
 const loadingText = ref('正在加载内容...')
-const showSettings = ref(false)
 const showDebugPanel = ref(false)
-const enableLlm = ref(false)
 const selectedUserId = ref(null)
 
 const recommendations = ref([])
@@ -187,43 +159,27 @@ const currentFeedTitle = computed(() => {
 })
 
 const currentFeedDescription = computed(() => {
-  if (activeFeed.value === 'recommend') {
-    return isOwnSelection.value ? '优先看最相关内容。' : `当前查看用户 #${selectedUserId.value || '-'} 的结果。`
-  }
+  if (activeFeed.value === 'recommend') return '优先看最相关内容。'
   if (activeFeed.value === 'following') {
     return '只看你关注的更新。'
   }
   return '快速扫最新内容。'
 })
 
-const selectionLabel = computed(() => (
-  isOwnSelection.value ? '我的推荐' : `演示用户 #${selectedUserId.value || '-'}`
-))
-
-function onWeightsChange(value) {
-  weights.value = value
-}
-
 async function fetchRecommendations() {
   if (!selectedUserId.value) return
 
-  loadingText.value = isOwnSelection.value
-    ? '正在为你计算推荐...'
-    : `正在生成用户 #${selectedUserId.value} 的推荐结果...`
+  loadingText.value = '正在为你计算推荐...'
   loading.value = true
 
   try {
     const data = isOwnSelection.value
       ? await getMyRecommendations({
         topN: topN.value,
-        enableLlm: enableLlm.value,
-        weights: weights.value,
         debug: true,
       })
       : await getRecommendations(selectedUserId.value, {
         topN: topN.value,
-        enableLlm: enableLlm.value,
-        weights: weights.value,
         debug: true,
       })
 
@@ -427,10 +383,6 @@ onMounted(() => {
   border-color: rgba(124, 58, 237, 0.12);
   color: var(--kr-primary-strong);
   background: rgba(124, 58, 237, 0.08);
-}
-
-.settings-panel {
-  margin-bottom: 14px;
 }
 
 .tabs-card {
