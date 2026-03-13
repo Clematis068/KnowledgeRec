@@ -9,6 +9,34 @@ from app.utils.context import build_request_context
 rec_bp = Blueprint('recommendation', __name__)
 
 
+def _parse_exclude_post_ids(raw_value):
+    if not raw_value:
+        return []
+    return [
+        int(item)
+        for item in raw_value.split(',')
+        if item.strip().isdigit()
+    ]
+
+
+def _attach_post_snapshot(item, post):
+    if not post:
+        return
+    post_data = post.to_dict()
+    item.update({
+        'title': post_data.get('title'),
+        'summary': post_data.get('summary'),
+        'author_id': post_data.get('author_id'),
+        'author_name': post_data.get('author_name'),
+        'domain_id': post_data.get('domain_id'),
+        'domain_name': post_data.get('domain_name'),
+        'view_count': post_data.get('view_count'),
+        'like_count': post_data.get('like_count'),
+        'tags': post_data.get('tags', []),
+        'created_at': post_data.get('created_at'),
+    })
+
+
 @rec_bp.route('/recommend/<int:user_id>', methods=['GET'])
 def get_recommendations(user_id):
     """获取用户的个性化推荐"""
@@ -16,6 +44,7 @@ def get_recommendations(user_id):
     enable_llm = request.args.get('enable_llm', 'true').lower() == 'true'
     enable_hot = request.args.get('enable_hot', 'true').lower() == 'true'
     debug = request.args.get('debug', 'false').lower() == 'true'
+    exclude_post_ids = _parse_exclude_post_ids(request.args.get('exclude_post_ids', ''))
     request_context = build_request_context(request)
 
     # 可选自定义权重
@@ -34,15 +63,13 @@ def get_recommendations(user_id):
             enable_hot=enable_hot,
             request_context=request_context,
             weights=weights,
+            exclude_post_ids=exclude_post_ids,
         )
 
         # 附带帖子详情
         for item in results:
             post = db.session.get(Post, item['post_id'])
-            if post:
-                item['title'] = post.title
-                item['summary'] = post.summary
-                item['author_id'] = post.author_id
+            _attach_post_snapshot(item, post)
 
         payload = {"user_id": user_id, "recommendations": results}
         if debug:
@@ -61,6 +88,7 @@ def get_my_recommendations():
     enable_llm = request.args.get('enable_llm', 'true').lower() == 'true'
     enable_hot = request.args.get('enable_hot', 'true').lower() == 'true'
     debug = request.args.get('debug', 'false').lower() == 'true'
+    exclude_post_ids = _parse_exclude_post_ids(request.args.get('exclude_post_ids', ''))
     request_context = build_request_context(request)
 
     w_cf = request.args.get('w_cf', type=float)
@@ -78,13 +106,11 @@ def get_my_recommendations():
             enable_hot=enable_hot,
             request_context=request_context,
             weights=weights,
+            exclude_post_ids=exclude_post_ids,
         )
         for item in results:
             post = db.session.get(Post, item['post_id'])
-            if post:
-                item['title'] = post.title
-                item['summary'] = post.summary
-                item['author_id'] = post.author_id
+            _attach_post_snapshot(item, post)
 
         payload = {"user_id": user_id, "recommendations": results}
         if debug:

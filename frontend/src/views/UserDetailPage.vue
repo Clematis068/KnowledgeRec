@@ -201,7 +201,8 @@
 <script setup>
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import {
   getBlockedAuthors, getBlockedDomains, getUserBehaviors, getUserDetail, getUserPosts, getUserFavorites,
   followUser, unfollowUser, getFollowers, getFollowing,
@@ -619,28 +620,30 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .user-detail-page {
-  max-width: 900px;
+  max-width: 1040px;
   margin: 0 auto;
+  display: grid;
+  gap: 18px;
 }
 
 .profile-card,
 .content-card {
-  border-radius: 28px;
+  border-radius: 32px;
 }
 
 .content-card {
-  margin-top: 16px;
+  margin-top: 0;
 }
 
 .profile {
   display: flex;
-  gap: 20px;
+  gap: 22px;
   align-items: flex-start;
   padding: 4px 2px;
 }
 
 .avatar {
-  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
+  background: linear-gradient(135deg, var(--kr-primary), var(--kr-hot));
   color: #fff;
   font-size: 24px;
   flex-shrink: 0;
@@ -659,9 +662,9 @@ onBeforeUnmount(() => {
 }
 
 .profile-top h2 {
-  font-size: 28px;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
   margin: 0;
 }
 
@@ -702,11 +705,11 @@ onBeforeUnmount(() => {
 }
 
 .stat-item.clickable:hover {
-  color: #409eff;
+  color: var(--kr-primary);
 }
 
 .stat-divider {
-  color: #dcdfe6;
+  color: rgba(216, 183, 157, 0.9);
 }
 
 .tab-pagination {
@@ -722,8 +725,8 @@ onBeforeUnmount(() => {
 .post-manage-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin: -2px 0 12px;
+  gap: 10px;
+  margin: -2px 8px 12px;
 }
 
 .block-panel {
@@ -740,8 +743,8 @@ onBeforeUnmount(() => {
 
 .block-title {
   font-size: 15px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 800;
+  color: var(--kr-text);
 }
 
 .block-list,
@@ -757,8 +760,11 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid var(--kr-border);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .blocked-main {
@@ -772,13 +778,13 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid var(--kr-border);
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: var(--kr-shadow-clay-soft);
   cursor: pointer;
-}
-
-.user-item:last-child {
-  border-bottom: none;
+  margin-bottom: 10px;
 }
 
 .user-item:hover .user-item-name {
@@ -786,7 +792,7 @@ onBeforeUnmount(() => {
 }
 
 .user-item-avatar {
-  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
+  background: linear-gradient(135deg, var(--kr-primary), var(--kr-secondary));
   color: #fff;
   font-size: 14px;
   flex-shrink: 0;
@@ -794,7 +800,7 @@ onBeforeUnmount(() => {
 
 .user-item-name {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--kr-text);
 }
 
@@ -805,8 +811,12 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 720px) {
-  .profile {
+  .profile,
+  .post-manage-actions,
+  .blocked-item,
+  .blocked-domain-item {
     flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

@@ -28,26 +28,32 @@ import AppSidebar from './AppSidebar.vue'
 <style scoped>
 .app-layout {
   min-height: 100vh;
-  padding: 16px;
+  padding: 0 24px 32px;
 }
 
 .app-header {
   position: sticky;
-  top: 16px;
-  z-index: 30;
-  margin-bottom: 16px;
+  top: 0;
+  z-index: 40;
+  background: rgba(253, 251, 247, 0.94);
+  backdrop-filter: blur(12px);
 }
 
 .app-body {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 0;
   align-items: start;
+  max-width: 1440px;
+  margin: 0 auto;
 }
 
 .app-aside {
   position: sticky;
-  top: 96px;
+  top: 84px;
+  min-height: calc(100vh - 84px);
+  padding: 28px 28px 0 0;
+  border-right: 1px solid var(--kr-border);
 }
 
 .app-main {
@@ -55,18 +61,14 @@ import AppSidebar from './AppSidebar.vue'
 }
 
 .app-main-inner {
-  min-height: calc(100vh - 120px);
-  padding: 28px;
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  border-radius: 32px;
-  background: rgba(255, 255, 255, 0.62);
-  box-shadow: 0 18px 48px rgba(76, 29, 149, 0.08);
-  backdrop-filter: blur(18px);
+  min-height: calc(100vh - 84px);
+  padding: 0 0 40px 40px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .app-body {
     grid-template-columns: 1fr;
+    gap: 24px;
   }
 
   .app-aside,
@@ -74,8 +76,21 @@ import AppSidebar from './AppSidebar.vue'
     position: static;
   }
 
+  .app-aside {
+    min-height: auto;
+    padding: 12px 0 0;
+    border-right: none;
+    border-bottom: 1px solid var(--kr-border);
+  }
+
   .app-main-inner {
-    padding: 20px;
+    padding: 0 0 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    padding: 0 16px 24px;
   }
 }
 </style>

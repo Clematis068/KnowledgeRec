@@ -110,5 +110,13 @@ defineExpose({ validate })
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

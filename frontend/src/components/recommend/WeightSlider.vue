@@ -69,19 +69,37 @@ function emitWeights() {
 .slider-row {
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  gap: 12px;
 }
 
 .label {
   width: 120px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 800;
 }
 
 .value {
-  width: 40px;
+  width: 48px;
   text-align: right;
   font-size: 13px;
   font-family: monospace;
+  color: var(--kr-text-soft);
+}
+
+@media (max-width: 640px) {
+  .slider-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .label,
+  .value {
+    width: auto;
+  }
+
+  .value {
+    text-align: left;
+  }
 }
 </style>

@@ -1,120 +1,221 @@
 <template>
   <div class="sidebar-shell">
-    <div class="sidebar-heading">
-      <span class="sidebar-kicker">Browse</span>
-      <h2>社区导航</h2>
-      <p>推荐、热门、广场、创作。</p>
-    </div>
+    <nav class="nav-group">
+      <button
+        v-for="item in primaryLinks"
+        :key="item.key"
+        type="button"
+        :class="['nav-item', { 'is-active': isActive(item) }]"
+        @click="navigate(item)"
+      >
+        <span class="nav-icon">
+          <el-icon><component :is="item.icon" /></el-icon>
+        </span>
+        <span class="nav-copy">
+          <span class="nav-label">{{ item.label }}</span>
+          <span class="nav-subtext">{{ item.subtext }}</span>
+        </span>
+      </button>
+    </nav>
 
-    <el-menu :default-active="activeMenu" :router="true" class="sidebar-menu">
-      <el-menu-item index="/recommend">
-        <el-icon><Star /></el-icon>
-        <span>智能推荐</span>
-      </el-menu-item>
-      <el-menu-item index="/hot">
-        <el-icon><TrendCharts /></el-icon>
-        <span>热门趋势</span>
-      </el-menu-item>
-      <el-menu-item index="/posts">
-        <el-icon><Document /></el-icon>
-        <span>帖子广场</span>
-      </el-menu-item>
-      <el-menu-item index="/create-post">
-        <el-icon><EditPen /></el-icon>
-        <span>发布内容</span>
-      </el-menu-item>
-      <el-menu-item index="/my-posts">
-        <el-icon><Files /></el-icon>
-        <span>我的发帖</span>
-      </el-menu-item>
-    </el-menu>
+    <div class="sidebar-divider"></div>
 
-    <div class="sidebar-note">
-      <span class="note-label">Tip</span>
-      <h3>先推荐，后热门。</h3>
-      <p>想定点找内容时，再用搜索。</p>
-      <button type="button" class="note-link" @click="focusSearch">去搜索</button>
-    </div>
+    <section class="sidebar-section">
+      <span class="section-title">Quick actions</span>
+      <button
+        v-for="item in secondaryLinks"
+        :key="item.key"
+        type="button"
+        class="nav-item nav-item--secondary"
+        @click="navigate(item)"
+      >
+        <span class="nav-icon">
+          <el-icon><component :is="item.icon" /></el-icon>
+        </span>
+        <span class="nav-copy">
+          <span class="nav-label">{{ item.label }}</span>
+          <span class="nav-subtext">{{ item.subtext }}</span>
+        </span>
+      </button>
+    </section>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { Collection, Document, EditPen, House, Search, TrendCharts, User } from '@element-plus/icons-vue'
+import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
+const router = useRouter()
+const authStore = useAuthStore()
 
-const activeMenu = computed(() => {
-  const path = route.path
-  if (path.startsWith('/recommend')) return '/recommend'
-  if (path.startsWith('/hot')) return '/hot'
-  if (path.startsWith('/posts')) return '/posts'
-  if (path.startsWith('/create-post')) return '/create-post'
-  if (path.startsWith('/my-posts')) return '/my-posts'
-  return path
-})
+const primaryLinks = computed(() => [
+  {
+    key: 'recommend',
+    label: 'Home',
+    subtext: '推荐首页',
+    route: '/recommend',
+    icon: House,
+  },
+  {
+    key: 'posts',
+    label: 'Library',
+    subtext: '帖子广场',
+    route: '/posts',
+    icon: Collection,
+  },
+  {
+    key: 'profile',
+    label: 'Profile',
+    subtext: '个人资料',
+    route: authStore.isLoggedIn ? `/users/${authStore.userId}` : '/login',
+    icon: User,
+  },
+  {
+    key: 'my-posts',
+    label: 'Stories',
+    subtext: '我的发帖',
+    route: authStore.isLoggedIn ? '/my-posts' : '/login',
+    icon: Document,
+  },
+  {
+    key: 'hot',
+    label: 'Stats',
+    subtext: '热门趋势',
+    route: '/hot',
+    icon: TrendCharts,
+  },
+])
 
-function focusSearch() {
-  window.dispatchEvent(new CustomEvent('app:focus-search'))
+const secondaryLinks = computed(() => [
+  {
+    key: 'write',
+    label: 'Write',
+    subtext: '发布内容',
+    route: authStore.isLoggedIn ? '/create-post' : '/login',
+    icon: EditPen,
+  },
+  {
+    key: 'search',
+    label: 'Search',
+    subtext: '搜索帖子或作者',
+    action: 'focus-search',
+    icon: Search,
+  },
+])
+
+function navigate(item) {
+  if (item.action === 'focus-search') {
+    window.dispatchEvent(new CustomEvent('app:focus-search'))
+    return
+  }
+  router.push(item.route)
+}
+
+function isActive(item) {
+  if (item.key === 'profile') return route.path.startsWith('/users')
+  if (item.key === 'recommend') return route.path.startsWith('/recommend')
+  if (item.key === 'posts') return route.path.startsWith('/posts')
+  if (item.key === 'my-posts') return route.path.startsWith('/my-posts')
+  if (item.key === 'hot') return route.path.startsWith('/hot')
+  return route.path === item.route
 }
 </script>
 
 <style scoped>
 .sidebar-shell {
-  padding: 24px;
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.08);
-  backdrop-filter: blur(18px);
+  display: grid;
+  gap: 20px;
+  padding-top: 6px;
 }
 
-.sidebar-heading {
-  margin-bottom: 20px;
+.nav-group,
+.sidebar-section {
+  display: grid;
+  gap: 6px;
 }
 
-.sidebar-kicker,
-.note-label {
-  display: inline-flex;
-  margin-bottom: 10px;
+.section-title {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--kr-primary);
+  color: var(--kr-text-muted);
 }
 
-.sidebar-heading h2,
-.sidebar-note h3 {
-  margin-bottom: 8px;
-  font-size: 24px;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
+.sidebar-divider {
+  height: 1px;
+  background: var(--kr-border);
 }
 
-.sidebar-heading p,
-.sidebar-note p {
-  color: var(--kr-text-soft);
-  line-height: 1.7;
-}
-
-.sidebar-menu {
-  margin-bottom: 18px;
-}
-
-.sidebar-note {
-  padding: 18px;
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(124, 58, 237, 0.1), rgba(124, 58, 237, 0.02));
-}
-
-.note-link {
-  display: inline-flex;
-  margin-top: 14px;
+.nav-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  width: 100%;
+  padding: 10px 0;
   border: none;
-  padding: 0;
   background: transparent;
-  font-weight: 600;
-  color: var(--kr-primary-strong);
+  color: var(--kr-text-soft);
+  text-align: left;
+}
+
+.nav-item.is-active {
+  color: var(--kr-text);
+}
+
+.nav-item.is-active .nav-label {
+  font-weight: 800;
+}
+
+.nav-item--secondary {
+  color: var(--kr-text-muted);
+}
+
+.nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 18px;
+}
+
+.nav-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.nav-label {
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.nav-subtext {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--kr-text-muted);
+}
+
+@media (max-width: 1180px) {
+  .sidebar-shell,
+  .nav-group,
+  .sidebar-section {
+    gap: 12px;
+  }
+
+  .nav-group,
+  .sidebar-section {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .sidebar-divider,
+  .section-title {
+    display: none;
+  }
 }
 </style>

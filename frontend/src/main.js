@@ -1,9 +1,21 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
-import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+import {
+  ArrowDown,
+  ChatDotRound,
+  CircleClose,
+  Connection,
+  Document,
+  EditPen,
+  Files,
+  Loading,
+  Star,
+  SwitchButton,
+  TrendCharts,
+  User,
+  View,
+} from '@element-plus/icons-vue'
+import { ElLoading } from 'element-plus/es/components/loading/index'
 import router from './router'
 import App from './App.vue'
 import './style.css'
@@ -12,16 +24,30 @@ import { useAuthStore } from './stores/auth'
 const app = createApp(App)
 const pinia = createPinia()
 
-// 注册所有 Element Plus 图标
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
+const globalIcons = {
+  ArrowDown,
+  ChatDotRound,
+  CircleClose,
+  Connection,
+  Document,
+  EditPen,
+  Files,
+  Loading,
+  Star,
+  SwitchButton,
+  TrendCharts,
+  User,
+  View,
 }
 
+for (const [name, component] of Object.entries(globalIcons)) {
+  app.component(name, component)
+}
+
+app.use(ElLoading)
 app.use(pinia)
-app.use(ElementPlus, { locale: zhCn })
 app.use(router)
 
-// 启动时验证 token
 const authStore = useAuthStore()
 authStore.init().finally(() => {
   app.mount('#app')

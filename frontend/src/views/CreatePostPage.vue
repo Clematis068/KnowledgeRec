@@ -1,7 +1,7 @@
 <script setup>
 import { nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 
 import { createPost } from '../api/post'
 import { useDomains } from '../composables/useDomains'
@@ -140,20 +140,31 @@ onMounted(fetchDomains)
 
 <style scoped>
 .create-post-page {
-  max-width: 900px;
+  max-width: 980px;
   margin: 0 auto;
+  display: grid;
+  gap: 18px;
 }
 
 .page-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 20px;
+  font-size: clamp(2rem, 3vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  margin-bottom: 4px;
+}
+
+.create-post-page :deep(.el-form) {
+  padding: 24px;
+  border: 1px solid var(--kr-border);
+  border-radius: 30px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(241, 232, 255, 0.92));
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .tag-input-area {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 </style>

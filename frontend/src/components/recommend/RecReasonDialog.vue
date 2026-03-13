@@ -90,28 +90,34 @@ watch(visible, (val) => {
 
 .reason-head h3 {
   margin: 8px 0 0;
-  font-size: 24px;
-  line-height: 1.1;
-  letter-spacing: -0.03em;
+  font-size: 28px;
+  line-height: 1.02;
+  letter-spacing: -0.05em;
 }
 
 .reason-kicker {
   display: inline-flex;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--kr-primary);
+  color: var(--kr-primary-strong);
+  background: var(--kr-primary-soft);
 }
 
 .reason-scroll {
   max-height: calc(100vh - 170px);
   overflow: auto;
-  padding-right: 4px;
+  padding: 18px;
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(239, 247, 255, 0.92));
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .reason-text {
-  line-height: 1.9;
+  line-height: 1.95;
   font-size: 14px;
   color: var(--kr-text);
   white-space: pre-wrap;

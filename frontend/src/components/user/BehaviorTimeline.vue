@@ -39,13 +39,23 @@ const labelMap = {
 </script>
 
 <style scoped>
+:deep(.el-timeline-item__node) {
+  box-shadow: 0 0 0 4px rgba(255, 143, 122, 0.18);
+}
+
+:deep(.el-timeline-item__tail) {
+  border-left: 2px solid rgba(126, 200, 227, 0.3);
+}
+
 .behavior-label {
-  font-weight: 600;
+  font-weight: 800;
   margin-right: 8px;
+  color: var(--kr-text);
 }
 
 .post-link {
-  color: #409eff;
+  color: var(--kr-secondary);
+  font-weight: 700;
 }
 
 .post-link:hover {
@@ -54,7 +64,7 @@ const labelMap = {
 
 .duration {
   font-size: 12px;
-  color: #909399;
+  color: var(--kr-text-muted);
   margin-left: 8px;
 }
 
@@ -62,6 +72,6 @@ const labelMap = {
   display: inline-block;
   margin-left: 8px;
   font-size: 13px;
-  color: #606266;
+  color: var(--kr-text-soft);
 }
 </style>

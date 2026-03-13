@@ -96,5 +96,6 @@ const emit = defineEmits([
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  flex-wrap: wrap;
 }
 </style>

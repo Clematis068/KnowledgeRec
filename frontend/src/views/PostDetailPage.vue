@@ -1,53 +1,57 @@
 <template>
   <div v-loading="loading" class="post-detail-page">
-    <el-page-header @back="$router.back()" :title="'返回'" style="margin-bottom: 20px" />
+    <div class="backbar">
+      <el-page-header @back="$router.back()" :title="'返回'" />
+    </div>
 
     <template v-if="post">
-      <el-card>
-        <template #header>
-          <div class="detail-header">
-            <h2>{{ post.title }}</h2>
-            <div class="meta">
-              <el-tag size="small">{{ post.domain_name }}</el-tag>
-              <router-link :to="`/users/${post.author_id}`" class="author-link">
-                {{ post.author_name || '匿名' }}
-              </router-link>
-              <span><el-icon><View /></el-icon> {{ post.view_count }}</span>
-              <span><el-icon><Star /></el-icon> {{ post.like_count }}</span>
-              <span>{{ post.created_at }}</span>
-            </div>
-            <div v-if="authStore.isLoggedIn" class="manage-bar">
-              <template v-if="isOwnPost">
-                <el-button size="small" @click="goToEdit">编辑帖子</el-button>
-                <el-button size="small" type="danger" @click="handleDeletePost">删除帖子</el-button>
-              </template>
-              <template v-else>
-                <el-button
-                  size="small"
-                  :type="blockedAuthor ? 'danger' : 'default'"
-                  @click="toggleBlockAuthor"
-                >
-                  {{ blockedAuthor ? '取消屏蔽作者' : '屏蔽作者' }}
-                </el-button>
-                <el-button
-                  size="small"
-                  :type="blockedDomain ? 'warning' : 'default'"
-                  @click="toggleBlockDomain"
-                >
-                  {{ blockedDomain ? '取消屏蔽领域' : '屏蔽领域' }}
-                </el-button>
-              </template>
-            </div>
+      <article class="article-shell">
+        <header class="article-header">
+          <span class="article-kicker">{{ post.domain_name || 'Knowledge' }}</span>
+          <h1 class="article-title">{{ post.title }}</h1>
+          <p v-if="post.summary" class="article-deck">{{ post.summary }}</p>
+
+          <div class="article-meta">
+            <router-link :to="`/users/${post.author_id}`" class="author-link">
+              {{ post.author_name || '匿名' }}
+            </router-link>
+            <span class="meta-item"><el-icon><View /></el-icon>{{ post.view_count || 0 }} 浏览</span>
+            <span class="meta-item"><el-icon><Star /></el-icon>{{ post.like_count || 0 }} 点赞</span>
+            <span class="meta-item">约 {{ readingMinutes }} 分钟阅读</span>
+            <span class="meta-item">{{ post.created_at }}</span>
           </div>
-        </template>
 
-        <div v-if="post.tags && post.tags.length" class="tags-area">
-          <el-tag v-for="tag in post.tags" :key="tag" size="small" type="info" class="tag">
-            {{ tag }}
-          </el-tag>
-        </div>
+          <div v-if="post.tags && post.tags.length" class="article-tags">
+            <el-tag v-for="tag in post.tags" :key="tag" size="small" effect="plain" class="tag-chip">
+              {{ tag }}
+            </el-tag>
+          </div>
 
-        <div v-if="authStore.isLoggedIn && !isOwnPost" class="action-bar">
+          <div v-if="authStore.isLoggedIn" class="manage-bar">
+            <template v-if="isOwnPost">
+              <el-button size="small" @click="goToEdit">编辑帖子</el-button>
+              <el-button size="small" type="danger" @click="handleDeletePost">删除帖子</el-button>
+            </template>
+            <template v-else>
+              <el-button
+                size="small"
+                :type="blockedAuthor ? 'danger' : 'default'"
+                @click="toggleBlockAuthor"
+              >
+                {{ blockedAuthor ? '取消屏蔽作者' : '屏蔽作者' }}
+              </el-button>
+              <el-button
+                size="small"
+                :type="blockedDomain ? 'warning' : 'default'"
+                @click="toggleBlockDomain"
+              >
+                {{ blockedDomain ? '取消屏蔽领域' : '屏蔽领域' }}
+              </el-button>
+            </template>
+          </div>
+        </header>
+
+        <div v-if="authStore.isLoggedIn && !isOwnPost" class="reader-actions">
           <el-button
             :type="liked ? 'danger' : 'default'"
             :icon="liked ? StarFilled : Star"
@@ -71,23 +75,43 @@
           </el-button>
         </div>
 
-        <div v-if="post.summary" class="summary-section">
-          <h4>摘要</h4>
-          <p>{{ post.summary }}</p>
-        </div>
+        <div class="article-layout">
+          <aside class="article-sidebar">
+            <div class="sidebar-block">
+              <span class="sidebar-kicker">Article note</span>
+              <p class="sidebar-text">采用更窄的正文宽度、更大的标题和更克制的分隔，让阅读更像长文页面。</p>
+            </div>
+            <div class="sidebar-block">
+              <span class="sidebar-kicker">Snapshot</span>
+              <ul class="sidebar-list">
+                <li class="sidebar-item">领域：{{ post.domain_name || '未分类' }}</li>
+                <li class="sidebar-item">阅读时长：约 {{ readingMinutes }} 分钟</li>
+                <li class="sidebar-item">互动：{{ post.like_count || 0 }} 赞 / {{ post.view_count || 0 }} 浏览</li>
+              </ul>
+            </div>
+          </aside>
 
-        <div class="content-section">
-          <h4>正文</h4>
-          <div class="content-body">{{ post.content }}</div>
+          <section class="article-content">
+            <div class="content-block">
+              <span class="content-kicker">正文</span>
+              <div class="content-body">
+                <p v-for="(paragraph, index) in contentParagraphs" :key="`${index}-${paragraph.slice(0, 16)}`" class="content-paragraph">
+                  {{ paragraph }}
+                </p>
+                <p v-if="!contentParagraphs.length" class="content-paragraph">暂无正文内容。</p>
+              </div>
+            </div>
+          </section>
         </div>
-      </el-card>
+      </article>
 
-      <el-card style="margin-top: 16px">
-        <template #header>
-              <span style="font-weight: 600">评论区</span>
-            </template>
+      <section class="comments-shell">
+        <div class="comments-header">
+          <span class="comments-kicker">Discussion</span>
+          <h2 class="comments-title">评论区</h2>
+        </div>
         <CommentSection :post-id="route.params.id" />
-      </el-card>
+      </section>
     </template>
 
     <el-empty v-else-if="!loading" description="帖子不存在" />
@@ -98,7 +122,8 @@
 import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { View, Star, StarFilled, Collection, CollectionTag, CircleClose } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import {
   blockPostAuthor,
   blockPostDomain,
@@ -126,6 +151,17 @@ const disliked = ref(false)
 const blockedAuthor = ref(false)
 const blockedDomain = ref(false)
 const isOwnPost = computed(() => post.value?.author_id === authStore.userId)
+const readingMinutes = computed(() => {
+  const contentLength = (post.value?.content || '').replace(/\s+/g, '').length
+  return Math.max(1, Math.round(contentLength / 320))
+})
+const contentParagraphs = computed(() => {
+  const content = post.value?.content || ''
+  return content
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+})
 
 onMounted(async () => {
   loading.value = true
@@ -133,10 +169,8 @@ onMounted(async () => {
     post.value = await getPostDetail(route.params.id)
 
     if (authStore.isLoggedIn) {
-      // 记录浏览行为 (fire-and-forget)
       recordBehavior(route.params.id, 'browse').catch(() => {})
 
-      // 获取点赞/收藏状态
       const status = await getPostUserStatus(route.params.id)
       liked.value = status.liked
       favorited.value = status.favorited
@@ -262,87 +296,209 @@ async function toggleBlockDomain() {
 
 <style scoped>
 .post-detail-page {
-  max-width: 900px;
+  max-width: 1120px;
   margin: 0 auto;
+  display: grid;
+  gap: 24px;
 }
 
-.detail-header h2 {
-  font-size: 20px;
-  margin-bottom: 10px;
+.backbar {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--kr-border);
 }
 
-.manage-bar {
+.article-shell {
+  display: grid;
+  gap: 28px;
+}
+
+.article-header {
+  max-width: 780px;
+  padding-bottom: 26px;
+  border-bottom: 1px solid var(--kr-border);
+}
+
+.article-kicker,
+.sidebar-kicker,
+.content-kicker,
+.comments-kicker {
+  display: inline-flex;
+  margin-bottom: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--kr-text-muted);
+}
+
+.article-title,
+.comments-title {
+  letter-spacing: -0.05em;
+}
+
+.article-title {
+  font-size: clamp(3rem, 6vw, 5.4rem);
+  line-height: 0.92;
+}
+
+.article-deck,
+.sidebar-text,
+.sidebar-item,
+.content-paragraph {
+  color: var(--kr-text-soft);
+  line-height: 1.95;
+}
+
+.article-deck {
+  margin-top: 18px;
+  font-size: 1.08rem;
+}
+
+.article-meta,
+.manage-bar,
+.reader-actions,
+.article-tags {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
 }
 
-.meta {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+.article-meta {
+  margin-top: 20px;
+  color: var(--kr-text-muted);
   font-size: 13px;
-  color: #909399;
 }
 
-.meta span {
-  display: flex;
+.meta-item {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .author-link {
-  color: #909399;
-  text-decoration: none;
+  color: var(--kr-secondary);
+  font-weight: 700;
 }
 
 .author-link:hover {
-  color: #409eff;
+  color: var(--kr-primary);
 }
 
-.tags-area {
-  margin-bottom: 16px;
+.article-tags {
+  margin-top: 18px;
 }
 
-.tag {
-  margin-right: 6px;
+.tag-chip {
+  border-color: var(--kr-border);
+  color: var(--kr-text-soft);
+  background: transparent;
 }
 
-.action-bar {
-  margin-bottom: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid #ebeef5;
+.manage-bar {
+  margin-top: 18px;
 }
 
-.summary-section {
-  margin-bottom: 20px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 6px;
+.reader-actions {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--kr-border);
 }
 
-.summary-section h4 {
-  font-size: 14px;
-  margin-bottom: 6px;
-  color: #606266;
+.article-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 44px;
+  align-items: start;
 }
 
-.summary-section p {
-  font-size: 14px;
-  line-height: 1.6;
-  color: #303133;
+.article-sidebar {
+  position: sticky;
+  top: 96px;
+  display: grid;
+  gap: 18px;
 }
 
-.content-section h4 {
-  font-size: 14px;
-  margin-bottom: 8px;
-  color: #606266;
+.sidebar-block,
+.content-block,
+.comments-shell {
+  padding-top: 18px;
+  border-top: 1px solid var(--kr-border);
+}
+
+.sidebar-list {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.sidebar-item {
+  position: relative;
+  padding-left: 18px;
+}
+
+.sidebar-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.78em;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--kr-primary);
+}
+
+.article-content {
+  max-width: 760px;
 }
 
 .content-body {
-  font-size: 14px;
-  line-height: 1.8;
-  white-space: pre-wrap;
-  color: #303133;
+  margin-top: 12px;
+}
+
+.content-paragraph {
+  margin-bottom: 1.4em;
+  font-size: 1.02rem;
+  white-space: pre-line;
+}
+
+.comments-header {
+  margin-bottom: 18px;
+}
+
+.comments-title {
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 0.98;
+}
+
+:deep(.el-page-header__content) {
+  font-weight: 700;
+}
+
+@media (max-width: 980px) {
+  .article-layout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .article-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .article-title {
+    font-size: clamp(2.4rem, 12vw, 4rem);
+  }
+
+  .article-meta,
+  .manage-bar,
+  .reader-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .reader-actions {
+    align-items: stretch;
+  }
 }
 </style>

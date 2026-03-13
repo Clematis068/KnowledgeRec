@@ -81,7 +81,8 @@
 
 <script setup>
 import { ref, nextTick, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { deleteComment, getComments, postComment } from '../../api/post'
 import { useAuthStore } from '../../stores/auth'
 
@@ -157,8 +158,17 @@ onMounted(fetchComments)
 </script>
 
 <style scoped>
+.comment-section {
+  display: grid;
+  gap: 18px;
+}
+
 .comment-input {
-  margin-bottom: 20px;
+  margin-bottom: 4px;
+  padding: 18px;
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(245, 239, 255, 0.96), rgba(255, 255, 255, 0.92));
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .reply-hint {
@@ -167,32 +177,38 @@ onMounted(fetchComments)
   gap: 8px;
   margin-bottom: 8px;
   font-size: 13px;
-  color: #409eff;
+  font-weight: 700;
+  color: var(--kr-secondary);
 }
 
 .login-tip {
-  margin-bottom: 20px;
-  color: #909399;
+  margin-bottom: 4px;
+  color: var(--kr-text-soft);
   font-size: 14px;
 }
 
 .login-tip a {
-  color: #409eff;
+  color: var(--kr-secondary);
+  font-weight: 700;
+}
+
+.comment-list {
+  display: grid;
+  gap: 10px;
 }
 
 .comment-item {
   display: flex;
   gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.comment-item:last-child {
-  border-bottom: none;
+  padding: 16px 18px;
+  border-radius: 24px;
+  border: 1px solid var(--kr-border);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .comment-avatar {
-  background: #409eff;
+  background: linear-gradient(135deg, var(--kr-secondary), var(--kr-primary));
   color: #fff;
   font-size: 14px;
   flex-shrink: 0;
@@ -208,58 +224,60 @@ onMounted(fetchComments)
   align-items: center;
   gap: 12px;
   margin-bottom: 4px;
+  flex-wrap: wrap;
 }
 
 .comment-user {
   font-size: 14px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 800;
+  color: var(--kr-text);
   text-decoration: none;
 }
 
 .comment-user:hover {
-  color: #409eff;
+  color: var(--kr-primary);
 }
 
 .comment-time {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--kr-text-muted);
 }
 
 .comment-text {
   font-size: 14px;
-  line-height: 1.6;
-  color: #606266;
+  line-height: 1.75;
+  color: var(--kr-text-soft);
   word-break: break-word;
 }
 
 .reply-tag {
-  color: #409eff;
+  color: var(--kr-secondary);
   font-size: 13px;
+  font-weight: 700;
 }
 
 .reply-btn {
-  margin-top: 4px;
-  color: #909399;
+  margin-top: 6px;
+  color: var(--kr-text-muted);
   padding: 0;
 }
 
 .reply-btn:hover {
-  color: #409eff;
+  color: var(--kr-primary);
 }
 
 .delete-btn {
-  margin-top: 4px;
-  color: #f56c6c;
+  margin-top: 6px;
+  color: var(--kr-danger);
   padding: 0;
 }
 
 .delete-btn:hover {
-  color: #f56c6c;
+  color: var(--kr-danger);
 }
 
 .comment-pagination {
-  margin-top: 16px;
+  margin-top: 8px;
   display: flex;
   justify-content: center;
 }

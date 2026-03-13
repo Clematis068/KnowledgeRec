@@ -1,63 +1,56 @@
 <template>
-  <el-card shadow="never" class="rec-card">
-    <div class="card-top">
-      <div>
-        <span class="card-kicker">Recommended For You</span>
-        <router-link :to="`/posts/${item.post_id}`" class="title">
-          {{ item.title || `帖子 #${item.post_id}` }}
-        </router-link>
+  <article class="rec-card">
+    <div class="card-main">
+      <div class="eyebrow-row">
+        <span class="eyebrow">{{ item.domain_name || 'Recommended' }}</span>
+        <span class="eyebrow-sep">·</span>
+        <span class="eyebrow">{{ item.author_name || 'KnowledgeRec' }}</span>
       </div>
-      <div class="score-chip">
-        {{ displayScore }}
+
+      <router-link :to="`/posts/${item.post_id}`" class="title">
+        {{ item.title || `帖子 #${item.post_id}` }}
+      </router-link>
+
+      <p class="summary">{{ summaryText }}</p>
+
+      <div v-if="previewTags.length" class="tag-row">
+        <span v-for="tag in previewTags" :key="tag" class="topic-pill">{{ tag }}</span>
+      </div>
+
+      <div class="meta-row">
+        <span class="meta-item">{{ formattedDate }}</span>
+        <span class="meta-item">{{ item.view_count || 0 }} 浏览</span>
+        <span class="meta-item">{{ item.like_count || 0 }} 赞</span>
+        <span class="meta-item">推荐分 {{ displayScore }}</span>
+      </div>
+
+      <div class="action-row">
+        <button type="button" class="action-link" @click="$emit('showReason', item.post_id)">
+          推荐理由
+        </button>
+        <button
+          v-if="allowFeedback"
+          type="button"
+          class="action-link action-link--danger"
+          @click="$emit('dislike', item.post_id)"
+        >
+          不感兴趣
+        </button>
       </div>
     </div>
 
-    <p class="summary">{{ item.summary || '暂时没有摘要，但这篇内容与你当前的知识探索路径高度相关。' }}</p>
-
-    <ScoreBar
-      :cf-score="item.cf_score || 0"
-      :graph-score="item.graph_score || 0"
-      :semantic-score="item.semantic_score || 0"
-      :hot-score="item.hot_score || 0"
-      :context-score="item.context_score || 0"
-    />
-
-    <div class="score-legend">
-      <span class="legend cf">CF {{ (item.cf_score || 0).toFixed(3) }}</span>
-      <span class="legend graph">Graph {{ (item.graph_score || 0).toFixed(3) }}</span>
-      <span class="legend semantic">Semantic {{ (item.semantic_score || 0).toFixed(3) }}</span>
-      <span class="legend hot">Hot {{ (item.hot_score || 0).toFixed(3) }}</span>
-      <span class="legend context">Context {{ (item.context_score || 0).toFixed(3) }}</span>
-      <span
-        v-if="item.context_region_match || item.context_time_slot_match"
-        class="legend match"
-      >
-        {{ buildMatchLabel(item) }}
-      </span>
-    </div>
-
-    <div class="card-footer">
-      <el-button size="small" type="primary" plain @click="$emit('showReason', item.post_id)">
-        <el-icon><ChatDotRound /></el-icon>
-        推荐理由
-      </el-button>
-      <el-button
-        v-if="allowFeedback"
-        size="small"
-        text
-        class="feedback-button"
-        @click="$emit('dislike', item.post_id)"
-      >
-        <el-icon><CircleClose /></el-icon>
-        不感兴趣
-      </el-button>
-    </div>
-  </el-card>
+    <router-link :to="`/posts/${item.post_id}`" class="thumb-card" aria-label="查看帖子">
+      <img class="thumb-image" :src="thumbnailSrc" :alt="item.title || '帖子封面'">
+      <div class="thumb-overlay">
+        <span class="thumb-domain">{{ thumbnailLabel }}</span>
+      </div>
+    </router-link>
+  </article>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import ScoreBar from './ScoreBar.vue'
+import { createPostThumbnail } from '../../utils/postThumbnail'
 
 const props = defineProps({
   item: { type: Object, required: true },
@@ -66,132 +59,178 @@ const props = defineProps({
 
 defineEmits(['showReason', 'dislike'])
 
+const summaryText = computed(() => (
+  props.item.summary || '这篇内容与你当前的阅读兴趣和行为模式高度相关，适合继续展开阅读。'
+))
+
+const previewTags = computed(() => (props.item.tags || []).slice(0, 3))
+
 const displayScore = computed(() => {
   const score = props.item.final_score ?? props.item.score
-  return score == null ? '--' : score.toFixed(4)
+  return score == null ? '--' : score.toFixed(3)
 })
 
-function buildMatchLabel(item) {
-  if (item.context_region_match && item.context_time_slot_match) {
-    return '地区 + 时段匹配'
-  }
-  if (item.context_region_match) {
-    return '地区匹配'
-  }
-  if (item.context_time_slot_match) {
-    return '时段匹配'
-  }
-  return '上下文匹配'
-}
+const formattedDate = computed(() => {
+  if (!props.item.created_at) return '最近'
+  const date = new Date(props.item.created_at)
+  if (Number.isNaN(date.getTime())) return '最近'
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
+})
+
+const thumbnailLabel = computed(() => {
+  const domainName = props.item.domain_name || 'Knowledge'
+  return domainName.length > 14 ? `${domainName.slice(0, 14)}…` : domainName
+})
+
+const thumbnailSrc = computed(() => createPostThumbnail({
+  title: props.item.title,
+  domainName: props.item.domain_name,
+  tags: props.item.tags || [],
+  seed: props.item.post_id || 0,
+}))
 </script>
 
 <style scoped>
 .rec-card {
-  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 208px;
+  gap: 24px;
+  padding: 26px 0;
+  border-bottom: 1px solid var(--kr-border);
 }
 
-.card-top {
+.card-main {
+  min-width: 0;
+}
+
+.eyebrow-row,
+.meta-row,
+.action-row {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.card-kicker {
-  display: inline-flex;
-  margin-bottom: 10px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--kr-primary);
+.eyebrow,
+.meta-item {
+  color: var(--kr-text-muted);
+  font-size: 13px;
+}
+
+.eyebrow-sep {
+  color: var(--kr-text-muted);
 }
 
 .title {
   display: inline-block;
-  font-size: 22px;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
-  font-weight: 700;
+  margin: 10px 0 12px;
+  font-size: clamp(1.9rem, 3vw, 2.55rem);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
 }
 
 .title:hover {
   color: var(--kr-primary-strong);
 }
 
-.score-chip {
-  flex-shrink: 0;
-  padding: 10px 14px;
-  border-radius: 999px;
-  font-weight: 700;
-  color: #8a3b12;
-  background: rgba(249, 115, 22, 0.14);
-}
-
 .summary {
-  margin: 16px 0;
+  max-width: 44rem;
   color: var(--kr-text-soft);
-  line-height: 1.8;
+  line-height: 1.82;
   display: -webkit-box;
   overflow: hidden;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
-.score-legend,
-.card-footer {
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.topic-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--kr-surface-alt);
+  color: var(--kr-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.meta-row {
+  margin-top: 16px;
+}
+
+.action-row {
+  margin-top: 16px;
+}
+
+.action-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--kr-primary-strong);
+  font-weight: 700;
+}
+
+.action-link--danger {
+  color: var(--kr-danger);
+}
+
+.thumb-card {
+  position: relative;
+  display: block;
+  min-height: 148px;
+  overflow: hidden;
+  border: 1px solid var(--kr-border);
+  background: #f3f2ee;
+}
+
+.thumb-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-overlay {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
-.score-legend {
-  margin-top: 16px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: var(--kr-text-muted);
-}
-
-.legend::before {
-  content: '';
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  margin-right: 6px;
+.thumb-domain {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
   border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--kr-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  backdrop-filter: blur(6px);
 }
 
-.cf::before {
-  background: #409eff;
-}
+@media (max-width: 720px) {
+  .rec-card {
+    grid-template-columns: 1fr;
+  }
 
-.graph::before {
-  background: #67c23a;
-}
-
-.semantic::before {
-  background: #e6a23c;
-}
-
-.hot::before {
-  background: #f56c6c;
-}
-
-.context::before {
-  background: #8b5cf6;
-}
-
-.match {
-  color: #7c3aed;
-  font-weight: 600;
-}
-
-.card-footer {
-  margin-top: 18px;
-}
-
-.feedback-button {
-  color: #b42318;
+  .thumb-card {
+    min-height: 164px;
+  }
 }
 </style>

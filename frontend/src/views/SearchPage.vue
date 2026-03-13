@@ -85,20 +85,34 @@ watch(
 
 <style scoped>
 .search-page {
-  max-width: 900px;
+  max-width: 980px;
   margin: 0 auto;
+  display: grid;
+  gap: 18px;
 }
 
 .page-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  padding: 22px 24px 8px;
+  border: 1px solid var(--kr-border);
+  border-radius: 30px 30px 18px 18px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(241, 232, 255, 0.92));
+  box-shadow: var(--kr-shadow-clay-soft);
+  font-size: clamp(2rem, 3vw, 3rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.05em;
 }
 
 .result-count {
-  font-size: 13px;
-  color: #909399;
-  margin-bottom: 16px;
+  margin-top: -18px;
+  margin-left: 24px;
+  width: fit-content;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--kr-secondary-soft);
+  color: var(--kr-secondary);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .pagination {
@@ -111,21 +125,22 @@ watch(
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 16px;
-  background: #fff;
-  border-radius: 8px;
-  margin-bottom: 10px;
+  padding: 18px;
+  border-radius: 24px;
+  margin-bottom: 12px;
   cursor: pointer;
-  border: 1px solid #ebeef5;
-  transition: box-shadow 0.2s;
+  border: 1px solid var(--kr-border);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(240, 232, 255, 0.9));
+  box-shadow: var(--kr-shadow-clay-soft);
+  transition: transform 0.2s ease;
 }
 
 .user-item:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transform: translateY(-3px);
 }
 
 .user-avatar {
-  background: #409eff;
+  background: linear-gradient(135deg, var(--kr-secondary), var(--kr-primary));
   color: #fff;
   font-size: 16px;
   flex-shrink: 0;
@@ -138,13 +153,14 @@ watch(
 }
 
 .user-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--kr-text);
 }
 
 .user-bio {
   font-size: 13px;
-  color: #909399;
+  color: var(--kr-text-soft);
+  line-height: 1.6;
 }
 </style>

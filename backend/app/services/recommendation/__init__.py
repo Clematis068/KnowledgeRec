@@ -50,6 +50,7 @@ class RecommendationEngine:
         enable_hot=True,
         request_context=None,
         weights=None,
+        exclude_post_ids=None,
         enable_exploration=True,
         enable_swing=True,
     ):
@@ -60,6 +61,7 @@ class RecommendationEngine:
             enable_hot=enable_hot,
             request_context=request_context,
             weights=weights,
+            exclude_post_ids=exclude_post_ids,
             enable_exploration=enable_exploration,
             enable_swing=enable_swing,
         )
@@ -73,6 +75,7 @@ class RecommendationEngine:
         enable_hot=True,
         request_context=None,
         weights=None,
+        exclude_post_ids=None,
         enable_exploration=True,
         enable_swing=True,
     ):
@@ -120,7 +123,16 @@ class RecommendationEngine:
             requested_weights=weights,
         )
 
-        buffer_n = max(top_n * DIVERSITY_BUFFER_MULTIPLIER, top_n)
+        excluded_ids = {
+            int(post_id)
+            for post_id in (exclude_post_ids or [])
+            if str(post_id).isdigit()
+        }
+        buffer_n = max(
+            (top_n + len(excluded_ids)) * DIVERSITY_BUFFER_MULTIPLIER,
+            top_n * DIVERSITY_BUFFER_MULTIPLIER,
+            top_n,
+        )
         results = self.fusion.fuse_with_details(
             cf_scores,
             swing_scores,
@@ -134,14 +146,15 @@ class RecommendationEngine:
         resolved_context = self._resolve_context(user_id, request_context)
         context_results = self._apply_context_bonus(results, resolved_context)
         filtered_results = self._apply_negative_feedback(user_id, context_results, buffer_n)
-        logic_adjusted_results = self.logic.apply(user_id, filtered_results)
+        unseen_results = self._exclude_seen_posts(filtered_results, excluded_ids)
+        logic_adjusted_results = self.logic.apply(user_id, unseen_results)
         diversified_results = self._apply_diversity_window(
             logic_adjusted_results,
             top_n,
             debug_info.get('user_stage', 'unknown'),
         )
         if enable_exploration:
-            final_results = self._apply_exploration(user_id, diversified_results, filtered_results, top_n)
+            final_results = self._apply_exploration(user_id, diversified_results, unseen_results, top_n)
         else:
             final_results = diversified_results[:top_n]
         final_post_ids = {item['post_id'] for item in final_results}
@@ -154,8 +167,10 @@ class RecommendationEngine:
         debug_info['knowledge_enabled'] = bool(knowledge_scores)
         debug_info['context'] = resolved_context
         debug_info['context_enabled'] = bool(resolved_context.get('region_code') or resolved_context.get('time_slot'))
+        debug_info['exclude_post_ids_count'] = len(excluded_ids)
         debug_info['result_count_before_filter'] = len(results)
         debug_info['result_count_after_negative_filter'] = len(filtered_results)
+        debug_info['result_count_after_exclude_seen'] = len(unseen_results)
         debug_info['result_count_after_logic'] = len(logic_adjusted_results)
         debug_info['result_count_after_diversity'] = len(diversified_results)
         debug_info['result_count_after_filter'] = len(final_results)
@@ -240,6 +255,15 @@ class RecommendationEngine:
 
         rescored_results.sort(key=lambda result: -result['final_score'])
         return rescored_results[:top_n]
+
+    def _exclude_seen_posts(self, results, exclude_post_ids):
+        if not exclude_post_ids:
+            return results
+        return [
+            item
+            for item in results
+            if item['post_id'] not in exclude_post_ids
+        ]
 
     def _apply_diversity_window(self, results, top_n, user_stage):
         if not results:

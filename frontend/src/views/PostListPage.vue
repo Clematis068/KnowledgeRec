@@ -72,21 +72,24 @@ onMounted(() => {
 
 <style scoped>
 .post-list-page {
-  max-width: 900px;
+  max-width: 980px;
   margin: 0 auto;
 }
 
 .page-header {
+  display: grid;
+  gap: 10px;
   margin-bottom: 16px;
 }
 
 .page-header h2 {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: clamp(2rem, 3vw, 3rem);
+  line-height: 0.96;
+  letter-spacing: -0.05em;
 }
 
 .pagination {
-  margin-top: 20px;
+  margin-top: 22px;
   display: flex;
   justify-content: center;
 }

@@ -22,10 +22,15 @@ defineProps({ user: { type: Object, required: true } })
 <style scoped>
 .user-card {
   cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.user-card:hover {
+  transform: translateY(-3px);
 }
 
 .user-card:hover .name {
-  color: #409eff;
+  color: var(--kr-primary);
 }
 
 .user-info {
@@ -35,24 +40,25 @@ defineProps({ user: { type: Object, required: true } })
 }
 
 .avatar {
-  background: #409eff;
+  background: linear-gradient(135deg, var(--kr-secondary), var(--kr-primary));
   color: #fff;
   flex-shrink: 0;
 }
 
 .name {
   font-size: 15px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 800;
+  color: var(--kr-text);
 }
 
 .bio {
   font-size: 12px;
-  color: #909399;
+  color: var(--kr-text-soft);
   margin-top: 4px;
+  line-height: 1.6;
 }
 
 .interest {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 </style>

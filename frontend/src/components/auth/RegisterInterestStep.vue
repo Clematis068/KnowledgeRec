@@ -185,34 +185,38 @@ function findTagName(tagId) {
 
 .step-head h3 {
   margin: 0 0 6px;
-  font-size: 20px;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
 
 .step-head p {
   margin: 0;
-  color: #909399;
+  color: var(--kr-text-soft);
+  line-height: 1.7;
 }
 
 .selected-count {
   padding: 8px 12px;
   border-radius: 999px;
-  background: #ecf5ff;
-  color: #409eff;
-  font-weight: 600;
+  background: var(--kr-secondary-soft);
+  color: var(--kr-secondary);
+  font-weight: 800;
 }
 
 .selected-panel,
 .tag-panel {
-  border: 1px solid #ebeef5;
-  border-radius: 16px;
-  padding: 16px;
-  background: #fff;
+  border: 1px solid var(--kr-border);
+  border-radius: 24px;
+  padding: 18px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(241, 232, 255, 0.92));
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .selected-title {
   margin-bottom: 12px;
-  color: #606266;
-  font-weight: 600;
+  color: var(--kr-text);
+  font-weight: 800;
 }
 
 .selected-tags {
@@ -237,15 +241,16 @@ function findTagName(tagId) {
 }
 
 .domain-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--kr-text);
+  letter-spacing: -0.03em;
 }
 
 .domain-desc {
   margin-top: 6px;
-  color: #909399;
-  line-height: 1.5;
+  color: var(--kr-text-soft);
+  line-height: 1.6;
 }
 
 .tag-grid {
@@ -256,22 +261,28 @@ function findTagName(tagId) {
 
 .tag-chip {
   padding: 12px 14px;
-  border: 1px solid #dcdfe6;
-  border-radius: 12px;
-  background: #fff;
-  color: #303133;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.tag-chip:hover {
-  border-color: #409eff;
-  color: #409eff;
+  border: 3px solid #e6cdb9;
+  border-radius: 16px;
+  font-weight: 700;
+  color: var(--kr-text);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .tag-chip.selected {
-  border-color: #409eff;
-  background: #ecf5ff;
-  color: #409eff;
+  color: #fff;
+  background: linear-gradient(135deg, var(--kr-primary), var(--kr-hot));
+}
+
+@media (max-width: 720px) {
+  .step-head,
+  .domain-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .domain-select {
+    max-width: none;
+  }
 }
 </style>

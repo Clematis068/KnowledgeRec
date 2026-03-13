@@ -1,7 +1,7 @@
 <script setup>
 import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 
 import RegisterEmailStep from '../components/auth/RegisterEmailStep.vue'
 import RegisterInterestStep from '../components/auth/RegisterInterestStep.vue'
@@ -295,92 +295,102 @@ onBeforeUnmount(clearCountdown)
 }
 
 .register-shell {
-  max-width: 1240px;
+  max-width: 1320px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 20px;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  gap: 24px;
   align-items: start;
 }
 
 .card-panel,
 .register-card {
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.76);
-  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.08);
-  backdrop-filter: blur(18px);
+  border: 1px solid var(--kr-border);
+  border-radius: 34px;
+  background: linear-gradient(145deg, rgba(255, 253, 249, 0.98), rgba(247, 238, 228, 0.96));
+  box-shadow: var(--kr-shadow-clay);
 }
 
 .register-copy {
+  min-height: 320px;
   padding: 34px;
+  background:
+    radial-gradient(circle at top right, rgba(143, 214, 180, 0.28), transparent 28%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(241, 232, 255, 0.92));
 }
 
 .page-kicker {
   display: inline-flex;
   margin-bottom: 14px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--kr-primary);
+  color: var(--kr-primary-strong);
+  background: var(--kr-primary-soft);
 }
 
 .register-copy h1,
 .brand-row h2 {
-  letter-spacing: -0.04em;
+  letter-spacing: -0.05em;
 }
 
 .register-copy h1 {
-  max-width: 10ch;
-  font-size: clamp(2.6rem, 5vw, 4.6rem);
-  line-height: 0.95;
+  max-width: 9ch;
+  font-size: clamp(3rem, 6vw, 5.4rem);
+  line-height: 0.9;
 }
 
 .register-copy p,
-.brand-row p {
-  margin-top: 14px;
+.brand-row p,
+.tag-hint {
+  margin-top: 16px;
   color: var(--kr-text-soft);
-  line-height: 1.75;
+  line-height: 1.8;
 }
 
 .copy-links {
   display: flex;
   gap: 12px;
-  margin-top: 22px;
+  margin-top: 28px;
+  flex-wrap: wrap;
 }
 
 .brand-row {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 22px;
+  margin-bottom: 24px;
 }
 
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 50px;
+  height: 50px;
+  border-radius: 18px;
   color: #fff;
-  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
+  background: linear-gradient(145deg, var(--kr-secondary), #9dd9ef);
+  box-shadow: 10px 10px 18px rgba(126, 200, 227, 0.28), -6px -6px 14px rgba(255, 255, 255, 0.94);
 }
 
 .steps {
-  margin-bottom: 24px;
+  margin-bottom: 26px;
 }
 
 .step-panel {
-  min-height: 420px;
+  display: grid;
+  gap: 18px;
 }
 
 .actions {
   display: flex;
   justify-content: space-between;
-  align-items: center;
   gap: 12px;
-  margin-top: 24px;
+  margin-top: 4px;
+  flex-wrap: wrap;
 }
 
 .actions-end {
@@ -388,12 +398,12 @@ onBeforeUnmount(clearCountdown)
 }
 
 .tag-hint {
-  margin-top: 12px;
-  color: #b42318;
-  font-size: 12px;
+  margin-top: 0;
+  color: var(--kr-danger);
+  font-weight: 700;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1024px) {
   .register-shell {
     grid-template-columns: 1fr;
   }
@@ -405,7 +415,8 @@ onBeforeUnmount(clearCountdown)
   }
 
   .copy-links,
-  .actions {
+  .actions,
+  .actions-end {
     flex-direction: column;
     align-items: stretch;
   }

@@ -12,23 +12,35 @@ const primaryLabel = computed(() => (authStore.isLoggedIn ? '进入我的推荐'
 const secondaryRoute = computed(() => (authStore.isLoggedIn ? '/posts' : '/register'))
 const secondaryLabel = computed(() => (authStore.isLoggedIn ? '浏览帖子广场' : '立即注册'))
 
-const quickCards = [
+const featureCards = computed(() => [
   {
     title: '推荐首页',
-    description: '先看重点内容。',
+    description: authStore.isLoggedIn ? '从个性化推荐开始今天的阅读。' : '登录后先看为你排序的重点内容。',
     icon: Reading,
+    route: authStore.isLoggedIn ? '/recommend' : '/login',
+    action: authStore.isLoggedIn ? '打开推荐' : '登录后查看',
   },
   {
     title: '热门话题',
-    description: '快速扫社区趋势。',
+    description: '用更短的时间把握社区里正在发生的讨论。',
     icon: TrendCharts,
+    route: '/hot',
+    action: '查看热门',
   },
   {
-    title: '知识广场',
-    description: '按帖子继续深入。',
+    title: '帖子广场',
+    description: '按主题继续深入浏览，找到值得展开阅读的内容。',
     icon: Connection,
+    route: '/posts',
+    action: '浏览帖子',
   },
-]
+])
+
+const editorialNotes = computed(() => [
+  authStore.isLoggedIn ? `已登录身份：${authStore.username}` : '当前状态：未登录',
+  '版式更偏向阅读，而不是控制台面板',
+  '绿色作为唯一强调色，降低视觉噪声',
+])
 
 function goTo(route) {
   router.push(route)
@@ -47,30 +59,32 @@ function logout() {
 <template>
   <div class="index-page">
     <div class="index-shell">
-      <header class="topbar">
-        <div class="brand">
+      <header class="masthead">
+        <div class="brand-block">
           <div class="brand-mark">
-            <el-icon :size="20"><Connection /></el-icon>
+            <el-icon :size="18"><Connection /></el-icon>
           </div>
-          <div>
-            <h1>KnowledgeRec</h1>
-            <p>知识社区入口</p>
+          <div class="brand-copy">
+            <h1 class="brand-title">KnowledgeRec</h1>
+            <p class="brand-subtitle">A cleaner entrance for reading, recommendation and discussion.</p>
           </div>
         </div>
 
-        <div class="topbar-actions">
+        <nav class="masthead-nav">
           <el-button text @click="goTo('/posts')">帖子广场</el-button>
           <el-button text @click="goTo('/hot')">热门</el-button>
           <el-button v-if="!authStore.isLoggedIn" type="primary" @click="goTo('/login')">登录</el-button>
           <el-button v-else type="primary" @click="goTo('/recommend')">我的推荐</el-button>
-        </div>
+        </nav>
       </header>
 
-      <section class="hero-card">
-        <div class="hero-copy">
-          <span class="hero-kicker">Index</span>
-          <h2>一个更清爽的知识社区入口。</h2>
-          <p>从这里进入推荐页、登录页或帖子广场。</p>
+      <section class="hero-section">
+        <div class="hero-main">
+          <span class="hero-kicker">Editorial Home</span>
+          <h2 class="hero-title">让推荐、阅读与讨论，像翻阅一份更干净的线上刊物。</h2>
+          <p class="hero-deck">
+            首页不再像一个功能面板，而是一个有节奏的阅读入口。你可以从推荐流开始，也可以直接进入热门话题和帖子广场。
+          </p>
 
           <div class="hero-actions">
             <el-button type="primary" size="large" @click="goTo(primaryRoute)">
@@ -83,35 +97,56 @@ function logout() {
           </div>
         </div>
 
-        <div class="hero-meta">
-          <div v-if="authStore.isLoggedIn" class="user-card">
-            <span class="meta-label">Account</span>
-            <div class="user-head">
-              <el-avatar :size="52" :icon="UserFilled" class="user-avatar" />
+        <aside class="hero-aside">
+          <div v-if="authStore.isLoggedIn" class="account-panel">
+            <span class="panel-kicker">Your account</span>
+            <div class="account-head">
+              <el-avatar :size="52" :icon="UserFilled" class="account-avatar" />
               <div>
-                <strong>{{ authStore.username }}</strong>
-                <p>已登录，可直接进入推荐页。</p>
+                <strong class="account-name">{{ authStore.username }}</strong>
+                <p class="account-note">已登录，可以直接进入你的推荐流或继续管理个人资料。</p>
               </div>
             </div>
-            <div class="user-actions">
+            <div class="account-actions">
               <el-button plain @click="goToProfile">个人资料</el-button>
               <el-button text class="logout-button" @click="logout">退出登录</el-button>
             </div>
           </div>
 
-          <div v-else class="meta-card">
-            <span class="meta-label">状态</span>
-            <strong>未登录</strong>
-            <p>先登录，再进入推荐页。</p>
+          <div v-else class="account-panel">
+            <span class="panel-kicker">Getting started</span>
+            <strong class="guest-title">先登录，再开始个性化阅读。</strong>
+            <p class="guest-note">注册后可以保存偏好、接收推荐，并围绕主题继续追踪内容。</p>
           </div>
-        </div>
+
+          <div class="edition-panel">
+            <span class="panel-kicker">Edition note</span>
+            <ul class="note-list">
+              <li v-for="note in editorialNotes" :key="note" class="note-item">{{ note }}</li>
+            </ul>
+          </div>
+        </aside>
       </section>
 
-      <section class="quick-grid">
-        <article v-for="item in quickCards" :key="item.title" class="quick-card">
-          <el-icon :size="20" class="quick-icon"><component :is="item.icon" /></el-icon>
-          <h3>{{ item.title }}</h3>
-          <p>{{ item.description }}</p>
+      <section class="feature-section">
+        <article
+          v-for="item in featureCards"
+          :key="item.title"
+          class="feature-card"
+          @click="goTo(item.route)"
+        >
+          <div class="feature-top">
+            <div class="feature-icon">
+              <el-icon :size="18"><component :is="item.icon" /></el-icon>
+            </div>
+            <span class="feature-kicker">Section</span>
+          </div>
+          <h3 class="feature-title">{{ item.title }}</h3>
+          <p class="feature-text">{{ item.description }}</p>
+          <span class="feature-link">
+            {{ item.action }}
+            <el-icon :size="14"><ArrowRight /></el-icon>
+          </span>
         </article>
       </section>
     </div>
@@ -121,201 +156,246 @@ function logout() {
 <style scoped>
 .index-page {
   min-height: 100vh;
-  padding: 24px;
+  padding: 8px 0 32px;
 }
 
 .index-shell {
-  max-width: 1280px;
+  max-width: 1120px;
   margin: 0 auto;
   display: grid;
-  gap: 20px;
+  gap: 34px;
 }
 
-.topbar,
-.hero-card,
-.quick-card,
-.meta-card,
-.user-card {
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.74);
-  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.08);
-  backdrop-filter: blur(18px);
-}
-
-.topbar {
+.masthead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 20px;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--kr-border);
 }
 
-.brand {
+.brand-block {
   display: flex;
   align-items: center;
   gap: 14px;
 }
 
 .brand-mark,
-.quick-icon {
+.feature-icon {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 16px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: var(--kr-primary);
+  background: var(--kr-primary-soft);
 }
 
-.brand h1,
-.hero-copy h2,
-.quick-card h3,
-.meta-card strong,
-.user-card strong {
-  letter-spacing: -0.04em;
+.brand-copy {
+  display: grid;
+  gap: 4px;
 }
 
-.brand h1 {
-  font-size: 20px;
+.brand-title,
+.hero-title,
+.feature-title,
+.account-name,
+.guest-title {
+  letter-spacing: -0.05em;
 }
 
-.brand p,
-.hero-copy p,
-.quick-card p,
-.meta-card p,
-.user-card p {
+.brand-title {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.brand-subtitle,
+.hero-deck,
+.account-note,
+.guest-note,
+.feature-text,
+.note-item {
   color: var(--kr-text-soft);
-  line-height: 1.75;
+  line-height: 1.85;
 }
 
-.topbar-actions {
+.brand-subtitle {
+  max-width: 34rem;
+  font-size: 0.95rem;
+}
+
+.masthead-nav {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
-.hero-card {
+.hero-section {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) 320px;
-  gap: 18px;
-  padding: 30px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.75fr);
+  gap: 42px;
+  padding-bottom: 36px;
+  border-bottom: 1px solid var(--kr-border);
 }
 
 .hero-kicker,
-.meta-label {
+.panel-kicker,
+.feature-kicker {
   display: inline-flex;
-  margin-bottom: 10px;
-  font-size: 12px;
+  margin-bottom: 14px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--kr-primary);
+  color: var(--kr-text-muted);
 }
 
-.hero-copy h2 {
-  max-width: 12ch;
-  font-size: clamp(2.6rem, 5vw, 4.6rem);
-  line-height: 0.95;
+.hero-title {
+  max-width: 11ch;
+  font-size: clamp(3.7rem, 8vw, 6.8rem);
+  line-height: 0.9;
 }
 
-.hero-copy p {
-  margin-top: 16px;
-  font-size: 16px;
+.hero-deck {
+  max-width: 43rem;
+  margin-top: 20px;
+  font-size: 1.05rem;
 }
 
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 22px;
+  gap: 14px;
+  margin-top: 32px;
 }
 
 .button-icon {
   margin-left: 6px;
 }
 
-.hero-meta {
+.hero-aside {
   display: grid;
+  gap: 24px;
+  align-content: start;
 }
 
-.meta-card,
-.user-card {
-  padding: 18px;
+.account-panel,
+.edition-panel {
+  padding-top: 18px;
+  border-top: 1px solid var(--kr-border);
 }
 
-.meta-card strong {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 28px;
-  line-height: 1.05;
-}
-
-.user-head {
+.account-head {
   display: flex;
   align-items: center;
   gap: 14px;
 }
 
-.user-avatar {
-  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
+.account-avatar {
+  background: var(--kr-primary);
 }
 
-.user-head strong {
+.account-name,
+.guest-title {
   display: block;
-  margin-bottom: 4px;
-  font-size: 26px;
-  line-height: 1.05;
+  margin-bottom: 6px;
+  font-size: clamp(1.5rem, 3vw, 2.15rem);
+  line-height: 1;
 }
 
-.user-actions {
+.account-actions {
   display: flex;
   gap: 10px;
   margin-top: 18px;
+  flex-wrap: wrap;
 }
 
 .logout-button {
-  color: #b42318;
+  color: var(--kr-danger);
 }
 
-.quick-grid {
+.note-list {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.note-item {
+  position: relative;
+  padding-left: 18px;
+}
+
+.note-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.78em;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--kr-primary);
+}
+
+.feature-section {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 22px;
 }
 
-.quick-card {
-  padding: 22px;
+.feature-card {
+  padding: 0 0 22px;
+  border-bottom: 1px solid var(--kr-border);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease;
 }
 
-.quick-card h3 {
-  margin: 16px 0 8px;
-  font-size: 24px;
+.feature-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--kr-border-strong);
 }
 
-@media (max-width: 900px) {
-  .hero-card,
-  .quick-grid {
+.feature-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.feature-title {
+  margin: 18px 0 10px;
+  font-size: clamp(1.7rem, 2.8vw, 2.3rem);
+  line-height: 1;
+}
+
+.feature-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 18px;
+  font-weight: 700;
+  color: var(--kr-primary-strong);
+}
+
+@media (max-width: 980px) {
+  .hero-section,
+  .feature-section {
     grid-template-columns: 1fr;
   }
-
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
 }
 
-@media (max-width: 640px) {
-  .index-page {
-    padding: 16px;
-  }
-
-  .topbar-actions,
+@media (max-width: 720px) {
+  .masthead,
+  .masthead-nav,
   .hero-actions,
-  .user-actions {
-    width: 100%;
+  .account-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .hero-title {
+    max-width: none;
   }
 }
 </style>

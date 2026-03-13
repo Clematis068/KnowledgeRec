@@ -193,9 +193,10 @@ function saveProfile() {
 
 .panel {
   padding: 20px;
-  border: 1px solid rgba(124, 58, 237, 0.1);
+  border: 3px solid #e6cdb9;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.76);
+  background: linear-gradient(145deg, #fffdf9, #f7ede1);
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .panel-head {
@@ -232,7 +233,7 @@ function saveProfile() {
   display: inline-flex;
   margin-bottom: 8px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--kr-text);
 }
 
@@ -244,7 +245,7 @@ function saveProfile() {
 .group-card {
   padding: 16px;
   border-radius: 18px;
-  background: rgba(124, 58, 237, 0.04);
+  background: #fff0e8;
 }
 
 .selected-head {
@@ -257,7 +258,7 @@ function saveProfile() {
 
 .selected-count {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--kr-primary);
 }
 
@@ -302,6 +303,7 @@ function saveProfile() {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 900px) {

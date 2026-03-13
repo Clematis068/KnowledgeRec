@@ -51,20 +51,21 @@ function pct(val) {
 <style scoped>
 .score-bar {
   display: flex;
-  height: 8px;
-  border-radius: 4px;
+  height: 12px;
+  border-radius: 999px;
   overflow: hidden;
-  background: #ebeef5;
+  background: #f1e3d4;
+  box-shadow: inset 2px 2px 6px rgba(219, 191, 165, 0.32), inset -2px -2px 6px rgba(255, 255, 255, 0.85);
 }
 
 .segment {
   min-width: 2px;
-  transition: width 0.3s;
+  transition: width 0.3s ease;
 }
 
-.cf { background: #409eff; }
-.graph { background: #67c23a; }
-.semantic { background: #e6a23c; }
-.hot { background: #f56c6c; }
-.context { background: #8b5cf6; }
+.cf { background: linear-gradient(90deg, #2563eb, #4f8cff); }
+.graph { background: linear-gradient(90deg, #22c55e, #5ee28a); }
+.semantic { background: linear-gradient(90deg, #ffb800, #ffd667); }
+.hot { background: linear-gradient(90deg, #ff4d8d, #ff7db2); }
+.context { background: linear-gradient(90deg, #ff8f7a, #ffb29b); }
 </style>

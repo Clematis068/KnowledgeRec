@@ -106,36 +106,45 @@ function handleInput(value) {
 
 <style scoped>
 .email-step {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 16px;
 }
 
 .email-row {
-  padding: 16px;
-  border-radius: 12px;
-  background: #f5f7fa;
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid var(--kr-border);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(239, 247, 255, 0.92));
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .email-label {
   font-size: 12px;
-  color: #909399;
+  color: var(--kr-text-muted);
   margin-bottom: 6px;
+  font-weight: 700;
 }
 
 .email-value {
   font-size: 15px;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 800;
+  color: var(--kr-text);
 }
 
 .verify-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: center;
 }
 
 .code-input {
   flex: 1;
+}
+
+@media (max-width: 720px) {
+  .verify-row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

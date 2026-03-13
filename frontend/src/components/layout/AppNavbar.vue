@@ -1,21 +1,17 @@
 <template>
   <div class="navbar">
-    <div class="brand-block" @click="router.push('/')">
+    <div class="brand-block" @click="router.push('/recommend')">
       <div class="brand-mark">
-        <el-icon :size="20"><Connection /></el-icon>
+        <el-icon :size="18"><Connection /></el-icon>
       </div>
-      <div class="brand-copy">
-        <span class="brand-title">KnowledgeRec</span>
-        <span class="brand-subtitle">知识社区</span>
-      </div>
+      <span class="brand-title">KnowledgeRec</span>
     </div>
 
     <div class="navbar-search">
       <div class="search-shell">
-        <el-select v-model="searchType" size="large" class="search-type">
-          <el-option label="搜帖子" value="post" />
-          <el-option label="搜作者" value="author" />
-        </el-select>
+        <button type="button" class="search-type-chip" @click="toggleSearchType">
+          {{ searchTypeLabel }}
+        </button>
         <el-autocomplete
           ref="searchInputRef"
           v-model="searchQuery"
@@ -59,6 +55,15 @@
 
     <div class="navbar-right">
       <template v-if="authStore.isLoggedIn">
+        <el-button text class="nav-action" @click="router.push('/recommend')">首页</el-button>
+        <el-button text class="nav-action" @click="handleWrite">
+          <el-icon><EditPen /></el-icon>
+          写作
+        </el-button>
+        <button type="button" class="icon-button" @click="router.push('/hot')" aria-label="热门">
+          <el-icon><Bell /></el-icon>
+        </button>
+
         <el-dropdown @command="handleCommand">
           <span class="user-info">
             <el-avatar :size="34" :icon="UserFilled" class="user-avatar" />
@@ -67,25 +72,17 @@
           </span>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item command="recommend">
-                <el-icon><Star /></el-icon>我的推荐
-              </el-dropdown-item>
-              <el-dropdown-item command="my-posts">
-                <el-icon><Document /></el-icon>我的发帖
-              </el-dropdown-item>
-              <el-dropdown-item command="profile">
-                <el-icon><User /></el-icon>个人资料
-              </el-dropdown-item>
-              <el-dropdown-item divided command="logout">
-                <el-icon><SwitchButton /></el-icon>退出登录
-              </el-dropdown-item>
+              <el-dropdown-item command="recommend">我的推荐</el-dropdown-item>
+              <el-dropdown-item command="my-posts">我的发帖</el-dropdown-item>
+              <el-dropdown-item command="profile">个人资料</el-dropdown-item>
+              <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
       </template>
       <template v-else>
-        <el-button text @click="router.push('/login')">登录</el-button>
-        <el-button type="primary" @click="router.push('/register')">注册</el-button>
+        <el-button text class="nav-action" @click="router.push('/login')">登录</el-button>
+        <el-button type="primary" @click="router.push('/register')">开始使用</el-button>
       </template>
     </div>
   </div>
@@ -94,7 +91,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Search, UserFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Bell, Connection, EditPen, Search, UserFilled } from '@element-plus/icons-vue'
 import { getHotPosts } from '../../api/post'
 import { useAuthStore } from '../../stores/auth'
 
@@ -111,9 +108,16 @@ const hotSuggestions = ref([])
 const hotSuggestionsLoaded = ref(false)
 const searchHistory = ref(loadSearchHistory())
 
+const searchTypeLabel = computed(() => (searchType.value === 'author' ? '作者' : '帖子'))
 const searchPlaceholder = computed(() => (
   searchType.value === 'author' ? '搜索作者' : '搜索帖子或话题'
 ))
+
+function toggleSearchType() {
+  searchType.value = searchType.value === 'post' ? 'author' : 'post'
+  searchQuery.value = ''
+  focusSearch()
+}
 
 async function ensureHotSuggestionsLoaded() {
   if (hotSuggestionsLoaded.value) return
@@ -282,6 +286,10 @@ function handleFocusSearch() {
   focusSearch()
 }
 
+function handleWrite() {
+  router.push(authStore.isLoggedIn ? '/create-post' : '/login')
+}
+
 function handleCommand(cmd) {
   if (cmd === 'recommend') {
     router.push('/recommend')
@@ -307,88 +315,74 @@ onBeforeUnmount(() => {
 <style scoped>
 .navbar {
   display: grid;
-  grid-template-columns: auto minmax(320px, 1fr) auto;
-  gap: 18px;
+  grid-template-columns: auto minmax(260px, 440px) auto;
+  gap: 24px;
   align-items: center;
-  min-height: 74px;
-  padding: 14px 20px;
-  border: 1px solid rgba(124, 58, 237, 0.14);
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.08);
-  backdrop-filter: blur(18px);
+  min-height: 72px;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--kr-border);
 }
 
 .brand-block {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 14px;
-  min-width: 0;
+  gap: 12px;
   cursor: pointer;
 }
 
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
   color: #fff;
-  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
-  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.28);
-}
-
-.brand-copy {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+  background: var(--kr-accent);
 }
 
 .brand-title {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.brand-subtitle {
-  font-size: 13px;
-  color: var(--kr-text-soft);
+  font-family: 'Newsreader', Georgia, serif;
+  font-size: clamp(1.9rem, 2.5vw, 2.3rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
 }
 
 .navbar-search {
   min-width: 0;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .search-shell {
   display: grid;
-  grid-template-columns: 108px minmax(0, 1fr);
-  gap: 8px;
-  padding: 6px;
-  width: min(100%, 460px);
-  border: 1px solid rgba(124, 58, 237, 0.1);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.76);
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: min(100%, 440px);
 }
 
-.search-type :deep(.el-select__wrapper),
+.search-type-chip {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--kr-border);
+  border-radius: 999px;
+  background: var(--kr-surface);
+  color: var(--kr-text-soft);
+  font-weight: 700;
+}
+
 .search-input :deep(.el-input__wrapper) {
-  min-height: 40px;
-  background: #fff;
-  font-size: 13px;
-}
-
-.search-type :deep(.el-select__selected-item),
-.search-input :deep(.el-input__inner),
-.search-input :deep(.el-input__prefix-inner) {
-  font-size: 13px;
+  min-height: 46px;
+  border-radius: 999px !important;
+  background: var(--kr-surface-alt) !important;
 }
 
 .search-suggestion {
   display: grid;
-  gap: 4px;
-  padding: 3px 0;
+  gap: 5px;
+  padding: 4px 2px;
 }
 
 .search-suggestion.is-action {
@@ -396,9 +390,9 @@ onBeforeUnmount(() => {
 }
 
 .search-suggestion.is-first-hot {
-  margin-top: 6px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(124, 58, 237, 0.12);
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--kr-border);
 }
 
 .suggestion-divider {
@@ -407,7 +401,8 @@ onBeforeUnmount(() => {
   width: fit-content;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--kr-text-muted);
 }
 
@@ -429,43 +424,58 @@ onBeforeUnmount(() => {
 .suggestion-source {
   display: inline-flex;
   align-items: center;
+  padding: 2px 8px;
   border-radius: 999px;
-  padding: 1px 8px;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--kr-primary-strong);
-  background: rgba(124, 58, 237, 0.08);
+  background: var(--kr-primary-soft);
 }
 
 .suggestion-source.history {
-  color: #2563eb;
-  background: rgba(37, 99, 235, 0.1);
+  color: var(--kr-secondary);
+  background: var(--kr-secondary-soft);
 }
 
 .suggestion-action {
-  color: #ef4444;
+  color: var(--kr-danger);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .navbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.nav-action {
+  color: var(--kr-text-soft);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--kr-border);
+  border-radius: 999px;
+  background: var(--kr-surface);
+  color: var(--kr-text-soft);
 }
 
 .user-info {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px 8px 8px;
-  border-radius: 999px;
+  padding: 2px 0;
   color: var(--kr-text);
-  background: rgba(124, 58, 237, 0.06);
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
+  background: var(--kr-primary);
 }
 
 .username {
@@ -476,13 +486,18 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
   .navbar {
     grid-template-columns: 1fr;
   }
 
+  .navbar-search {
+    order: 3;
+  }
+
   .navbar-right {
-    justify-content: space-between;
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 

@@ -2,7 +2,7 @@
 import { onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Connection } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
 
 import PasswordResetFormStep from '../components/auth/PasswordResetFormStep.vue'
 import RegisterEmailStep from '../components/auth/RegisterEmailStep.vue'
@@ -251,76 +251,87 @@ onBeforeUnmount(clearCountdown)
 }
 
 .forgot-shell {
-  max-width: 1180px;
+  max-width: 1240px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 440px;
-  gap: 20px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1.08fr) 440px;
+  gap: 24px;
+  align-items: stretch;
 }
 
 .card-panel,
 .forgot-card {
-  border: 1px solid rgba(124, 58, 237, 0.12);
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.76);
-  box-shadow: 0 18px 44px rgba(76, 29, 149, 0.08);
-  backdrop-filter: blur(18px);
+  border: 1px solid var(--kr-border);
+  border-radius: 34px;
+  background: linear-gradient(145deg, rgba(255, 253, 249, 0.98), rgba(247, 238, 228, 0.96));
+  box-shadow: var(--kr-shadow-clay);
 }
 
 .forgot-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 540px;
   padding: 34px;
+  background:
+    radial-gradient(circle at top right, rgba(126, 200, 227, 0.26), transparent 26%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(241, 232, 255, 0.92));
 }
 
 .page-kicker {
   display: inline-flex;
   margin-bottom: 14px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--kr-primary);
+  color: var(--kr-primary-strong);
+  background: var(--kr-primary-soft);
 }
 
 .forgot-copy h1,
 .brand-row h2 {
-  letter-spacing: -0.04em;
+  letter-spacing: -0.05em;
 }
 
 .forgot-copy h1 {
-  max-width: 12ch;
-  font-size: clamp(2.6rem, 5vw, 4.2rem);
-  line-height: 0.95;
+  max-width: 10ch;
+  font-size: clamp(3rem, 6vw, 5rem);
+  line-height: 0.9;
 }
 
 .forgot-copy p,
 .brand-row p {
-  margin-top: 14px;
+  margin-top: 16px;
   color: var(--kr-text-soft);
-  line-height: 1.75;
+  line-height: 1.8;
 }
 
 .copy-actions {
   display: flex;
   gap: 12px;
-  margin-top: 22px;
+  margin-top: 28px;
+  flex-wrap: wrap;
 }
 
 .brand-row {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 22px;
+  margin-bottom: 24px;
 }
 
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
+  width: 50px;
+  height: 50px;
+  border-radius: 18px;
   color: #fff;
-  background: linear-gradient(135deg, var(--kr-primary), #9f67ff);
+  background: linear-gradient(145deg, var(--kr-secondary), #9dd9ef);
+  box-shadow: 10px 10px 18px rgba(126, 200, 227, 0.28), -6px -6px 14px rgba(255, 255, 255, 0.94);
 }
 
 .steps {
@@ -341,11 +352,16 @@ onBeforeUnmount(clearCountdown)
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 960px) {
   .forgot-shell {
     grid-template-columns: 1fr;
+  }
+
+  .forgot-copy {
+    min-height: auto;
   }
 }
 
@@ -357,6 +373,7 @@ onBeforeUnmount(clearCountdown)
   .copy-actions,
   .step-actions {
     flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

@@ -34,7 +34,8 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index'
+import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { useAuthStore } from '../stores/auth'
 import { getUserPosts } from '../api/user'
 import { deletePost } from '../api/post'
@@ -87,7 +88,7 @@ onMounted(fetchPosts)
 
 <style scoped>
 .my-posts-page {
-  max-width: 900px;
+  max-width: 980px;
   margin: 0 auto;
 }
 
@@ -96,34 +97,44 @@ onMounted(fetchPosts)
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .page-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: clamp(2rem, 3vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  margin-bottom: 6px;
 }
 
 .page-subtitle {
-  font-size: 13px;
-  color: #909399;
+  font-size: 14px;
+  color: var(--kr-text-soft);
+  line-height: 1.7;
 }
 
 .post-item {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .post-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin: -2px 0 12px;
+  gap: 10px;
+  margin: -2px 8px 14px;
 }
 
 .pagination {
-  margin-top: 20px;
+  margin-top: 22px;
   display: flex;
   justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .page-header,
+  .post-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

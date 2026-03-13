@@ -274,22 +274,25 @@ function formatTimeSlot(value) {
 .panel-kicker {
   display: inline-flex;
   margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--kr-primary);
+  color: var(--kr-primary-strong);
+  background: var(--kr-primary-soft);
 }
 
 .debug-head h2 {
   margin: 0;
-  font-size: 28px;
-  line-height: 1.05;
-  letter-spacing: -0.04em;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.05em;
 }
 
 .panel-card {
-  border-radius: 18px;
+  border-radius: 24px;
 }
 
 .panel-header {
@@ -297,13 +300,13 @@ function formatTimeSlot(value) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .panel-tip {
   font-size: 12px;
   color: var(--kr-text-muted);
-  font-weight: 400;
+  font-weight: 600;
 }
 
 .overview-grid {
@@ -316,9 +319,9 @@ function formatTimeSlot(value) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 14px;
-  background: rgba(124, 58, 237, 0.04);
-  border-radius: 14px;
+  padding: 16px;
+  background: #fff0e8;
+  border-radius: 16px;
 }
 
 .metric-label {
@@ -328,7 +331,7 @@ function formatTimeSlot(value) {
 
 .metric-value {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--kr-text);
 }
 
@@ -352,7 +355,7 @@ function formatTimeSlot(value) {
 
 .weight-row {
   padding: 10px 0;
-  border-bottom: 1px solid rgba(124, 58, 237, 0.08);
+  border-bottom: 1px solid rgba(230, 205, 185, 0.8);
 }
 
 .weight-row:last-child,
@@ -378,12 +381,12 @@ function formatTimeSlot(value) {
 }
 
 .weight-used {
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .route-section {
   padding: 12px 0;
-  border-bottom: 1px solid rgba(124, 58, 237, 0.08);
+  border-bottom: 1px solid rgba(230, 205, 185, 0.8);
 }
 
 .sample-list {
@@ -397,9 +400,9 @@ function formatTimeSlot(value) {
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  padding: 12px;
-  background: rgba(124, 58, 237, 0.04);
-  border-radius: 14px;
+  padding: 14px;
+  background: #fff7f1;
+  border-radius: 16px;
 }
 
 .sample-main {
@@ -409,7 +412,7 @@ function formatTimeSlot(value) {
 
 .sample-title {
   color: var(--kr-text);
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.6;
   text-decoration: none;
 }
