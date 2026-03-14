@@ -100,30 +100,26 @@
           </el-tab-pane>
 
           <el-tab-pane label="关注" name="following">
-            <div v-loading="tabLoading">
+            <div v-loading="tabLoading" class="user-grid">
               <div v-for="u in followingList" :key="u.id" class="user-item" @click="$router.push(`/users/${u.id}`)">
-                <el-avatar :size="36" class="user-item-avatar">
+                <el-avatar :size="48" class="user-item-avatar">
                   {{ u.username?.charAt(0)?.toUpperCase() }}
                 </el-avatar>
-                <div>
-                  <div class="user-item-name">{{ u.username }}</div>
-                  <div class="user-item-bio">{{ u.bio || '暂无简介' }}</div>
-                </div>
+                <div class="user-item-name">{{ u.username }}</div>
+                <div class="user-item-bio">{{ u.bio || '暂无简介' }}</div>
               </div>
               <el-empty v-if="!tabLoading && followingList.length === 0" description="暂无关注" />
             </div>
           </el-tab-pane>
 
           <el-tab-pane label="粉丝" name="followers">
-            <div v-loading="tabLoading">
+            <div v-loading="tabLoading" class="user-grid">
               <div v-for="u in followersList" :key="u.id" class="user-item" @click="$router.push(`/users/${u.id}`)">
-                <el-avatar :size="36" class="user-item-avatar">
+                <el-avatar :size="48" class="user-item-avatar">
                   {{ u.username?.charAt(0)?.toUpperCase() }}
                 </el-avatar>
-                <div>
-                  <div class="user-item-name">{{ u.username }}</div>
-                  <div class="user-item-bio">{{ u.bio || '暂无简介' }}</div>
-                </div>
+                <div class="user-item-name">{{ u.username }}</div>
+                <div class="user-item-bio">{{ u.bio || '暂无简介' }}</div>
               </div>
               <el-empty v-if="!tabLoading && followersList.length === 0" description="暂无粉丝" />
             </div>
@@ -774,17 +770,24 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.user-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+}
+
 .user-item {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 16px 18px;
-  border-radius: 22px;
+  gap: 6px;
+  padding: 16px 10px;
+  border-radius: 16px;
   border: 1px solid var(--kr-border);
   background: rgba(255, 255, 255, 0.8);
   box-shadow: var(--kr-shadow-clay-soft);
   cursor: pointer;
-  margin-bottom: 10px;
+  text-align: center;
 }
 
 .user-item:hover .user-item-name {
@@ -794,20 +797,28 @@ onBeforeUnmount(() => {
 .user-item-avatar {
   background: linear-gradient(135deg, var(--kr-primary), var(--kr-secondary));
   color: #fff;
-  font-size: 14px;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
 .user-item-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--kr-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .user-item-bio {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--kr-text-muted);
-  margin-top: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
 }
 
 @media (max-width: 720px) {

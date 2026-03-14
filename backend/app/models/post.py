@@ -37,6 +37,7 @@ class Post(db.Model):
             'summary': self.summary,
             'author_id': self.author_id,
             'author_name': self.author.username if self.author else None,
+            'author_avatar_url': self.author.avatar_url if self.author else None,
             'domain_id': self.domain_id,
             'domain_name': self.domain.name if self.domain else None,
             'view_count': self.view_count,

@@ -42,7 +42,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Collection, Document, EditPen, House, Search, TrendCharts, User } from '@element-plus/icons-vue'
+import { Document, EditPen, House, Search, TrendCharts, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
@@ -56,13 +56,6 @@ const primaryLinks = computed(() => [
     subtext: '',
     route: '/recommend',
     icon: House,
-  },
-  {
-    key: 'posts',
-    label: '帖子广场',
-    subtext: '',
-    route: '/posts',
-    icon: Collection,
   },
   {
     key: 'profile',
@@ -115,7 +108,6 @@ function navigate(item) {
 function isActive(item) {
   if (item.key === 'profile') return route.path.startsWith('/users')
   if (item.key === 'recommend') return route.path.startsWith('/recommend')
-  if (item.key === 'posts') return route.path.startsWith('/posts')
   if (item.key === 'my-posts') return route.path.startsWith('/my-posts')
   if (item.key === 'hot') return route.path.startsWith('/hot')
   return route.path === item.route

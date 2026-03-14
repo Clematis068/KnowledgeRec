@@ -47,6 +47,7 @@ class User(db.Model):
             'username': self.username,
             'email': self.email,
             'gender': self.gender,
+            'avatar_url': self.avatar_url,
             'bio': self.bio,
             'interest_profile': self.interest_profile,
             'interest_tags': [t.to_dict() for t in self.interest_tags],

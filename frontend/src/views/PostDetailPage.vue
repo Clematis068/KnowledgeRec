@@ -7,18 +7,19 @@
     <template v-if="post">
       <article class="article-shell">
         <header class="article-header">
-          <span class="article-kicker">{{ post.domain_name || '知识内容' }}</span>
-          <h1 class="article-title">{{ post.title }}</h1>
-          <p v-if="post.summary" class="article-deck">{{ post.summary }}</p>
+          <PostAuthorHero
+            :post="post"
+            :reading-minutes="readingMinutes"
+            :formatted-created-at="formattedCreatedAt"
+            :show-follow-button="showFollowButton"
+            :is-following="isFollowingAuthor"
+            :follow-loading="followLoading"
+            @toggle-follow="toggleFollowAuthor"
+          />
 
           <div class="article-meta">
-            <router-link :to="`/users/${post.author_id}`" class="author-link">
-              {{ post.author_name || '匿名' }}
-            </router-link>
             <span class="meta-item"><el-icon><View /></el-icon>{{ post.view_count || 0 }} 浏览</span>
             <span class="meta-item"><el-icon><Star /></el-icon>{{ post.like_count || 0 }} 点赞</span>
-            <span class="meta-item">约 {{ readingMinutes }} 分钟阅读</span>
-            <span class="meta-item">{{ post.created_at }}</span>
           </div>
 
           <div v-if="post.tags && post.tags.length" class="article-tags">
@@ -115,6 +116,14 @@
     </template>
 
     <el-empty v-else-if="!loading" description="帖子不存在" />
+
+    <UnfollowAuthorDialog
+      v-model:visible="unfollowDialogVisible"
+      :author-name="authorName"
+      :author-avatar-src="authorAvatarSrc"
+      :submitting="followLoading"
+      @confirm="confirmUnfollowAuthor"
+    />
   </div>
 </template>
 
@@ -137,8 +146,11 @@ import {
   undislikePost,
   getPostUserStatus,
 } from '../api/post'
+import { followUser, getFollowStatus, unfollowUser } from '../api/user'
 import { useAuthStore } from '../stores/auth'
 import CommentSection from '../components/post/CommentSection.vue'
+import PostAuthorHero from '../components/post/PostAuthorHero.vue'
+import UnfollowAuthorDialog from '../components/post/UnfollowAuthorDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -150,10 +162,26 @@ const favorited = ref(false)
 const disliked = ref(false)
 const blockedAuthor = ref(false)
 const blockedDomain = ref(false)
+const isFollowingAuthor = ref(false)
+const followLoading = ref(false)
+const unfollowDialogVisible = ref(false)
 const isOwnPost = computed(() => post.value?.author_id === authStore.userId)
+const showFollowButton = computed(() => authStore.isLoggedIn && !isOwnPost.value && !!post.value?.author_id)
+const authorName = computed(() => post.value?.author_name || '匿名作者')
+const authorAvatarSrc = computed(() => post.value?.author_avatar_url || '')
 const readingMinutes = computed(() => {
   const contentLength = (post.value?.content || '').replace(/\s+/g, '').length
   return Math.max(1, Math.round(contentLength / 320))
+})
+const formattedCreatedAt = computed(() => {
+  if (!post.value?.created_at) return '最近'
+  const date = new Date(post.value.created_at)
+  if (Number.isNaN(date.getTime())) return post.value.created_at
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
 })
 const contentParagraphs = computed(() => {
   const content = post.value?.content || ''
@@ -163,24 +191,37 @@ const contentParagraphs = computed(() => {
     .filter(Boolean)
 })
 
-onMounted(async () => {
+async function fetchPost() {
   loading.value = true
   try {
-    post.value = await getPostDetail(route.params.id)
+    const detail = await getPostDetail(route.params.id)
+    post.value = detail
 
     if (authStore.isLoggedIn) {
       recordBehavior(route.params.id, 'browse').catch(() => {})
 
-      const status = await getPostUserStatus(route.params.id)
+      const [status, followStatus] = await Promise.all([
+        getPostUserStatus(route.params.id),
+        detail.author_id && detail.author_id !== authStore.userId
+          ? getFollowStatus(detail.author_id)
+          : Promise.resolve(null),
+      ])
       liked.value = status.liked
       favorited.value = status.favorited
       disliked.value = status.disliked
       blockedAuthor.value = status.blocked_author
       blockedDomain.value = status.blocked_domain
+      isFollowingAuthor.value = followStatus?.is_following ?? false
+    } else {
+      isFollowingAuthor.value = false
     }
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  fetchPost()
 })
 
 async function toggleLike() {
@@ -237,6 +278,44 @@ async function toggleDislike() {
     }
   } catch {
     // 错误已被 axios 拦截器处理
+  }
+}
+
+async function toggleFollowAuthor() {
+  const authorId = post.value?.author_id
+  if (!authorId || !showFollowButton.value) return
+
+  if (isFollowingAuthor.value) {
+    unfollowDialogVisible.value = true
+    return
+  }
+
+  followLoading.value = true
+  try {
+    await followUser(authorId)
+    isFollowingAuthor.value = true
+    ElMessage.success('关注成功')
+  } catch {
+    // 错误已被 axios 拦截器处理
+  } finally {
+    followLoading.value = false
+  }
+}
+
+async function confirmUnfollowAuthor() {
+  const authorId = post.value?.author_id
+  if (!authorId || !showFollowButton.value) return
+
+  followLoading.value = true
+  try {
+    await unfollowUser(authorId)
+    isFollowingAuthor.value = false
+    unfollowDialogVisible.value = false
+    ElMessage.success('已取消关注')
+  } catch {
+    // 错误已被 axios 拦截器处理
+  } finally {
+    followLoading.value = false
   }
 }
 
@@ -313,12 +392,12 @@ async function toggleBlockDomain() {
 }
 
 .article-header {
-  max-width: 780px;
+  display: grid;
+  gap: 16px;
   padding-bottom: 26px;
   border-bottom: 1px solid var(--kr-border);
 }
 
-.article-kicker,
 .sidebar-kicker,
 .content-kicker,
 .comments-kicker {
@@ -331,27 +410,15 @@ async function toggleBlockDomain() {
   color: var(--kr-text-muted);
 }
 
-.article-title,
 .comments-title {
   letter-spacing: -0.05em;
 }
 
-.article-title {
-  font-size: clamp(3rem, 6vw, 5.4rem);
-  line-height: 0.92;
-}
-
-.article-deck,
 .sidebar-text,
 .sidebar-item,
 .content-paragraph {
   color: var(--kr-text-soft);
   line-height: 1.95;
-}
-
-.article-deck {
-  margin-top: 18px;
-  font-size: 1.08rem;
 }
 
 .article-meta,
@@ -364,7 +431,6 @@ async function toggleBlockDomain() {
 }
 
 .article-meta {
-  margin-top: 20px;
   color: var(--kr-text-muted);
   font-size: 13px;
 }
@@ -375,17 +441,8 @@ async function toggleBlockDomain() {
   gap: 6px;
 }
 
-.author-link {
-  color: var(--kr-secondary);
-  font-weight: 700;
-}
-
-.author-link:hover {
-  color: var(--kr-primary);
-}
-
 .article-tags {
-  margin-top: 18px;
+  margin-top: 4px;
 }
 
 .tag-chip {
@@ -486,10 +543,6 @@ async function toggleBlockDomain() {
 }
 
 @media (max-width: 720px) {
-  .article-title {
-    font-size: clamp(2.4rem, 12vw, 4rem);
-  }
-
   .article-meta,
   .manage-bar,
   .reader-actions {

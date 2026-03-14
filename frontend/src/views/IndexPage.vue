@@ -1,45 +1,76 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, Connection, Reading, TrendCharts, UserFilled } from '@element-plus/icons-vue'
+import {
+  ArrowRight,
+  Connection,
+  Reading,
+  Search,
+  TrendCharts,
+  UserFilled,
+} from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
-const primaryRoute = computed(() => (authStore.isLoggedIn ? '/recommend' : '/login'))
-const primaryLabel = computed(() => (authStore.isLoggedIn ? '进入我的推荐' : '去登录'))
-const secondaryRoute = computed(() => (authStore.isLoggedIn ? '/posts' : '/register'))
-const secondaryLabel = computed(() => (authStore.isLoggedIn ? '浏览帖子广场' : '立即注册'))
+const primaryRoute = computed(() => (authStore.isLoggedIn ? '/recommend' : '/register'))
+const primaryLabel = computed(() => (authStore.isLoggedIn ? '进入我的推荐' : '注册开始使用'))
+const secondaryRoute = computed(() => (authStore.isLoggedIn ? '/hot' : '/login'))
+const secondaryLabel = computed(() => (authStore.isLoggedIn ? '查看热门趋势' : '已有账号，去登录'))
 
-const featureCards = computed(() => [
+const heroBullets = computed(() => [
+  '更像阅读入口，而不是堆满按钮的功能页',
+  '推荐、热门、搜索三条路径清晰分离',
+  authStore.isLoggedIn ? '已登录后可直接进入你的个性化内容流' : '未登录也可以先浏览热门内容与社区方向',
+])
+
+const quickLinks = computed(() => [
   {
     title: '推荐首页',
-    description: authStore.isLoggedIn ? '从个性化推荐开始今天的阅读。' : '登录后先看为你排序的重点内容。',
-    icon: Reading,
+    description: authStore.isLoggedIn ? '直接打开你的个性化推荐流。' : '登录后即可看到为你排序的内容。',
     route: authStore.isLoggedIn ? '/recommend' : '/login',
     action: authStore.isLoggedIn ? '打开推荐' : '登录后查看',
+    icon: Reading,
   },
   {
-    title: '热门话题',
-    description: '用更短的时间把握社区里正在发生的讨论。',
-    icon: TrendCharts,
+    title: '热门趋势',
+    description: '快速把握社区里正在被讨论的内容与帖子。',
     route: '/hot',
     action: '查看热门',
+    icon: TrendCharts,
   },
   {
-    title: '帖子广场',
-    description: '按主题继续深入浏览，找到值得展开阅读的内容。',
-    icon: Connection,
-    route: '/posts',
-    action: '浏览帖子',
+    title: authStore.isLoggedIn ? '个人资料' : '账号入口',
+    description: authStore.isLoggedIn ? '管理资料、关注关系与发帖记录。' : '注册后可以保存偏好并追踪自己的阅读行为。',
+    route: authStore.isLoggedIn ? `/users/${authStore.userId}` : '/register',
+    action: authStore.isLoggedIn ? '打开资料' : '创建账号',
+    icon: UserFilled,
   },
 ])
 
-const editorialNotes = computed(() => [
-  authStore.isLoggedIn ? `已登录身份：${authStore.username}` : '当前状态：未登录',
-  '版式更偏向阅读，而不是控制台面板',
-  '绿色作为唯一强调色，降低视觉噪声',
+const editorialSteps = computed(() => [
+  {
+    index: '01',
+    title: '先看方向',
+    description: '从热门趋势了解此刻社区在讨论什么，先建立内容地图。',
+  },
+  {
+    index: '02',
+    title: '再进推荐',
+    description: '登录后进入推荐流，让首页开始围绕你的兴趣排序。',
+  },
+  {
+    index: '03',
+    title: '持续追踪',
+    description: '进入作者主页、个人资料与发帖记录，形成稳定的阅读路径。',
+  },
+])
+
+const statusNotes = computed(() => [
+  authStore.isLoggedIn ? `当前身份：${authStore.username}` : '当前身份：访客',
+  authStore.isLoggedIn ? '推荐流、资料页、我的发帖已可直接访问。' : '推荐流与资料编辑需要登录后使用。',
+  '首页已经统一为更克制的编辑化结构。',
 ])
 
 function goTo(route) {
@@ -60,31 +91,49 @@ function logout() {
   <div class="index-page">
     <div class="index-shell">
       <header class="masthead">
-        <div class="brand-block">
-          <div class="brand-mark">
+        <button type="button" class="brand-block" @click="goTo('/')">
+          <span class="brand-mark">
             <el-icon :size="18"><Connection /></el-icon>
-          </div>
-          <div class="brand-copy">
-            <h1 class="brand-title">知识推荐</h1>
-            <p class="brand-subtitle">更清爽的阅读、推荐与讨论入口。</p>
-          </div>
-        </div>
+          </span>
+          <span class="brand-copy">
+            <strong class="brand-title">知识推荐</strong>
+            <span class="brand-subtitle">Knowledge feed, reading and discussion</span>
+          </span>
+        </button>
 
         <nav class="masthead-nav">
-          <el-button text @click="goTo('/posts')">帖子广场</el-button>
           <el-button text @click="goTo('/hot')">热门</el-button>
-          <el-button v-if="!authStore.isLoggedIn" type="primary" @click="goTo('/login')">登录</el-button>
-          <el-button v-else type="primary" @click="goTo('/recommend')">我的推荐</el-button>
+          <el-button text @click="goTo('/search')">
+            <el-icon><Search /></el-icon>
+            搜索
+          </el-button>
+          <el-button
+            v-if="authStore.isLoggedIn"
+            type="primary"
+            @click="goTo('/recommend')"
+          >
+            我的推荐
+          </el-button>
+          <template v-else>
+            <el-button text @click="goTo('/login')">登录</el-button>
+            <el-button type="primary" @click="goTo('/register')">注册</el-button>
+          </template>
         </nav>
       </header>
 
       <section class="hero-section">
         <div class="hero-main">
-          <span class="hero-kicker">首页</span>
-          <h2 class="hero-title">让推荐、阅读与讨论，像翻阅一份更干净的线上刊物。</h2>
+          <span class="section-kicker">首页</span>
+          <h1 class="hero-title">把推荐、阅读与讨论，收束成一个更稳定的知识入口。</h1>
           <p class="hero-deck">
-            首页不再像一个功能面板，而是一个有节奏的阅读入口。你可以从推荐流开始，也可以直接进入热门话题和帖子广场。
+            现在的首页不再强调功能堆叠，而是优先呈现阅读路径：先理解内容方向，再进入推荐流，最后沉淀到个人资料与发帖关系里。
           </p>
+
+          <ul class="hero-bullets">
+            <li v-for="item in heroBullets" :key="item" class="hero-bullet">
+              {{ item }}
+            </li>
+          </ul>
 
           <div class="hero-actions">
             <el-button type="primary" size="large" @click="goTo(primaryRoute)">
@@ -97,57 +146,83 @@ function logout() {
           </div>
         </div>
 
-        <aside class="hero-aside">
-          <div v-if="authStore.isLoggedIn" class="account-panel">
-            <span class="panel-kicker">我的账号</span>
-            <div class="account-head">
-              <el-avatar :size="52" :icon="UserFilled" class="account-avatar" />
-              <div>
-                <strong class="account-name">{{ authStore.username }}</strong>
-                <p class="account-note">已登录，可以直接进入你的推荐流或继续管理个人资料。</p>
+        <aside class="hero-side">
+          <section class="surface-card status-card">
+            <span class="section-kicker">当前状态</span>
+
+            <template v-if="authStore.isLoggedIn">
+              <div class="account-head">
+                <el-avatar :size="56" :icon="UserFilled" class="account-avatar" />
+                <div class="account-copy">
+                  <strong class="account-name">{{ authStore.username }}</strong>
+                  <p class="account-note">你已经登录，可以直接进入推荐流、个人资料和我的发帖。</p>
+                </div>
               </div>
-            </div>
-            <div class="account-actions">
-              <el-button plain @click="goToProfile">个人资料</el-button>
-              <el-button text class="logout-button" @click="logout">退出登录</el-button>
-            </div>
-          </div>
 
-          <div v-else class="account-panel">
-            <span class="panel-kicker">开始使用</span>
-            <strong class="guest-title">先登录，再开始个性化阅读。</strong>
-            <p class="guest-note">注册后可以保存偏好、接收推荐，并围绕主题继续追踪内容。</p>
-          </div>
+              <div class="inline-actions">
+                <el-button plain @click="goToProfile">个人资料</el-button>
+                <el-button text class="danger-action" @click="logout">退出登录</el-button>
+              </div>
+            </template>
 
-          <div class="edition-panel">
-            <span class="panel-kicker">页面说明</span>
-            <ul class="note-list">
-              <li v-for="note in editorialNotes" :key="note" class="note-item">{{ note }}</li>
+            <template v-else>
+              <div class="guest-copy">
+                <strong class="guest-title">先注册，再建立你的阅读偏好。</strong>
+                <p class="account-note">登录后，你的推荐、收藏和发帖关系会形成一个更连续的内容路径。</p>
+              </div>
+            </template>
+
+            <ul class="status-list">
+              <li v-for="note in statusNotes" :key="note" class="status-item">{{ note }}</li>
             </ul>
-          </div>
+          </section>
         </aside>
       </section>
 
-      <section class="feature-section">
-        <article
-          v-for="item in featureCards"
-          :key="item.title"
-          class="feature-card"
-          @click="goTo(item.route)"
-        >
-          <div class="feature-top">
-            <div class="feature-icon">
-              <el-icon :size="18"><component :is="item.icon" /></el-icon>
+      <section class="link-section">
+        <div class="section-head">
+          <span class="section-kicker">主要入口</span>
+          <h2 class="section-title">三条最常用的进入路径</h2>
+        </div>
+
+        <div class="link-grid">
+          <article
+            v-for="item in quickLinks"
+            :key="item.title"
+            class="surface-card link-card"
+            @click="goTo(item.route)"
+          >
+            <div class="link-card-top">
+              <span class="feature-icon">
+                <el-icon :size="18"><component :is="item.icon" /></el-icon>
+              </span>
+              <span class="micro-label">入口</span>
             </div>
-            <span class="feature-kicker">模块</span>
-          </div>
-          <h3 class="feature-title">{{ item.title }}</h3>
-          <p class="feature-text">{{ item.description }}</p>
-          <span class="feature-link">
-            {{ item.action }}
-            <el-icon :size="14"><ArrowRight /></el-icon>
-          </span>
-        </article>
+
+            <h3 class="link-card-title">{{ item.title }}</h3>
+            <p class="link-card-text">{{ item.description }}</p>
+
+            <span class="link-card-action">
+              {{ item.action }}
+              <el-icon :size="14"><ArrowRight /></el-icon>
+            </span>
+          </article>
+        </div>
+      </section>
+
+      <section class="editorial-section">
+        <div class="section-head">
+          <span class="section-kicker">使用方式</span>
+          <h2 class="section-title">首页改成了一种更顺手的阅读节奏</h2>
+        </div>
+
+        <div class="step-grid">
+          <article v-for="item in editorialSteps" :key="item.index" class="step-card">
+            <span class="step-index">{{ item.index }}</span>
+            <h3 class="step-title">{{ item.title }}</h3>
+            <p class="step-text">{{ item.description }}</p>
+          </article>
+        </div>
       </section>
     </div>
   </div>
@@ -156,14 +231,14 @@ function logout() {
 <style scoped>
 .index-page {
   min-height: 100vh;
-  padding: 8px 0 32px;
+  padding: 12px 0 48px;
 }
 
 .index-shell {
-  max-width: 1120px;
+  max-width: 1180px;
   margin: 0 auto;
   display: grid;
-  gap: 34px;
+  gap: 40px;
 }
 
 .masthead {
@@ -176,53 +251,51 @@ function logout() {
 }
 
 .brand-block {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--kr-text);
+  text-align: left;
 }
 
 .brand-mark,
 .feature-icon {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
   color: var(--kr-primary);
   background: var(--kr-primary-soft);
 }
 
 .brand-copy {
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .brand-title,
 .hero-title,
-.feature-title,
+.section-title,
+.link-card-title,
 .account-name,
-.guest-title {
+.guest-title,
+.step-title {
   letter-spacing: -0.05em;
 }
 
 .brand-title {
-  font-size: 1.1rem;
+  font-size: 1.12rem;
   line-height: 1;
 }
 
-.brand-subtitle,
-.hero-deck,
-.account-note,
-.guest-note,
-.feature-text,
-.note-item {
-  color: var(--kr-text-soft);
-  line-height: 1.85;
-}
-
 .brand-subtitle {
-  max-width: 34rem;
-  font-size: 0.95rem;
+  color: var(--kr-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .masthead-nav {
@@ -234,168 +307,256 @@ function logout() {
 
 .hero-section {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.75fr);
-  gap: 42px;
-  padding-bottom: 36px;
-  border-bottom: 1px solid var(--kr-border);
+  grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.72fr);
+  gap: clamp(24px, 4vw, 56px);
+  align-items: start;
 }
 
-.hero-kicker,
-.panel-kicker,
-.feature-kicker {
+.section-kicker,
+.micro-label {
   display: inline-flex;
-  margin-bottom: 14px;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.section-kicker {
   color: var(--kr-text-muted);
+  background: var(--kr-accent-soft);
+}
+
+.micro-label {
+  color: var(--kr-primary);
+  background: rgba(26, 137, 23, 0.08);
+}
+
+.hero-main {
+  display: grid;
+  gap: 20px;
 }
 
 .hero-title {
   max-width: 11ch;
-  font-size: clamp(3.7rem, 8vw, 6.8rem);
-  line-height: 0.9;
+  font-size: clamp(3.6rem, 8vw, 7rem);
+  line-height: 0.92;
+}
+
+.hero-deck,
+.link-card-text,
+.step-text,
+.account-note,
+.status-item {
+  color: var(--kr-text-soft);
+  line-height: 1.82;
 }
 
 .hero-deck {
-  max-width: 43rem;
-  margin-top: 20px;
-  font-size: 1.05rem;
+  max-width: 44rem;
+  font-size: 1.06rem;
 }
 
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 32px;
-}
-
-.button-icon {
-  margin-left: 6px;
-}
-
-.hero-aside {
-  display: grid;
-  gap: 24px;
-  align-content: start;
-}
-
-.account-panel,
-.edition-panel {
-  padding-top: 18px;
-  border-top: 1px solid var(--kr-border);
-}
-
-.account-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.account-avatar {
-  background: var(--kr-primary);
-}
-
-.account-name,
-.guest-title {
-  display: block;
-  margin-bottom: 6px;
-  font-size: clamp(1.5rem, 3vw, 2.15rem);
-  line-height: 1;
-}
-
-.account-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 18px;
-  flex-wrap: wrap;
-}
-
-.logout-button {
-  color: var(--kr-danger);
-}
-
-.note-list {
+.hero-bullets,
+.status-list {
   list-style: none;
   display: grid;
   gap: 10px;
 }
 
-.note-item {
+.hero-bullet,
+.status-item {
   position: relative;
   padding-left: 18px;
 }
 
-.note-item::before {
+.hero-bullet::before,
+.status-item::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 0.78em;
+  top: 0.82em;
   width: 6px;
   height: 6px;
   border-radius: 999px;
   background: var(--kr-primary);
 }
 
-.feature-section {
+.hero-actions,
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.button-icon {
+  margin-left: 6px;
+}
+
+.hero-side {
+  min-width: 0;
+}
+
+.surface-card {
+  border: 1px solid var(--kr-border);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(247, 247, 245, 0.9));
+}
+
+.status-card {
   display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.account-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.account-avatar {
+  flex-shrink: 0;
+  background: var(--kr-primary);
+}
+
+.account-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.account-name,
+.guest-title {
+  display: block;
+  font-size: clamp(1.55rem, 3vw, 2.2rem);
+  line-height: 0.98;
+}
+
+.guest-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.danger-action {
+  color: var(--kr-danger);
+}
+
+.section-head {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.section-title {
+  max-width: 14ch;
+  font-size: clamp(2.1rem, 4vw, 3.6rem);
+  line-height: 0.96;
+}
+
+.link-grid,
+.step-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.link-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px;
 }
 
-.feature-card {
-  padding: 0 0 22px;
-  border-bottom: 1px solid var(--kr-border);
+.link-card {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
   cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease;
+  transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
 }
 
-.feature-card:hover {
+.link-card:hover {
   transform: translateY(-2px);
   border-color: var(--kr-border-strong);
 }
 
-.feature-top {
+.link-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 12px;
 }
 
-.feature-title {
-  margin: 18px 0 10px;
-  font-size: clamp(1.7rem, 2.8vw, 2.3rem);
+.link-card-title {
+  font-size: clamp(1.7rem, 2.6vw, 2.3rem);
   line-height: 1;
 }
 
-.feature-link {
+.link-card-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 18px;
   font-weight: 700;
   color: var(--kr-primary-strong);
 }
 
-@media (max-width: 980px) {
+.step-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.step-card {
+  display: grid;
+  gap: 14px;
+  padding: 22px 0 0;
+  border-top: 1px solid var(--kr-border);
+}
+
+.step-index {
+  color: var(--kr-text-muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.step-title {
+  font-size: clamp(1.45rem, 2vw, 1.9rem);
+  line-height: 1.05;
+}
+
+@media (max-width: 1024px) {
   .hero-section,
-  .feature-section {
+  .link-grid,
+  .step-grid {
     grid-template-columns: 1fr;
+  }
+
+  .hero-title,
+  .section-title {
+    max-width: none;
   }
 }
 
 @media (max-width: 720px) {
+  .index-page {
+    padding-bottom: 28px;
+  }
+
+  .index-shell {
+    gap: 28px;
+  }
+
   .masthead,
   .masthead-nav,
   .hero-actions,
-  .account-actions {
+  .inline-actions {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .hero-title {
-    max-width: none;
+  .status-card,
+  .link-card {
+    padding: 18px;
+    border-radius: 22px;
   }
 }
 </style>

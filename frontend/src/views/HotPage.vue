@@ -51,15 +51,9 @@ onMounted(async () => {
 }
 
 .page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 22px 24px;
-  border: 1px solid var(--kr-border);
-  border-radius: 30px;
-  background: linear-gradient(135deg, rgba(255, 200, 111, 0.34), rgba(255, 179, 167, 0.28), rgba(223, 244, 251, 0.82));
-  box-shadow: var(--kr-shadow-clay-soft);
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .page-header h2 {

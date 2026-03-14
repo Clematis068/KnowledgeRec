@@ -41,7 +41,7 @@
       <h2 class="rail-title">继续探索</h2>
       <div class="mini-links">
         <button type="button" class="mini-link" @click="router.push('/hot')">查看热门趋势</button>
-        <button type="button" class="mini-link" @click="router.push('/posts')">进入帖子广场</button>
+        <button type="button" class="mini-link" @click="router.push('/search')">搜索更多主题</button>
       </div>
     </section>
   </aside>
