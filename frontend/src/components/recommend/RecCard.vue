@@ -2,9 +2,9 @@
   <article class="rec-card">
     <div class="card-main">
       <div class="eyebrow-row">
-        <span class="eyebrow">{{ item.domain_name || 'Recommended' }}</span>
+        <span class="eyebrow">{{ item.domain_name || '推荐内容' }}</span>
         <span class="eyebrow-sep">·</span>
-        <span class="eyebrow">{{ item.author_name || 'KnowledgeRec' }}</span>
+        <span class="eyebrow">{{ item.author_name || '知识推荐' }}</span>
       </div>
 
       <router-link :to="`/posts/${item.post_id}`" class="title">
@@ -81,7 +81,7 @@ const formattedDate = computed(() => {
 })
 
 const thumbnailLabel = computed(() => {
-  const domainName = props.item.domain_name || 'Knowledge'
+  const domainName = props.item.domain_name || '知识内容'
   return domainName.length > 14 ? `${domainName.slice(0, 14)}…` : domainName
 })
 
@@ -134,7 +134,7 @@ const thumbnailSrc = computed(() => createPostThumbnail({
 }
 
 .title:hover {
-  color: var(--kr-primary-strong);
+  color: var(--kr-text);
 }
 
 .summary {
@@ -160,8 +160,8 @@ const thumbnailSrc = computed(() => createPostThumbnail({
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  background: var(--kr-surface-alt);
-  color: var(--kr-text-soft);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--kr-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -178,12 +178,12 @@ const thumbnailSrc = computed(() => createPostThumbnail({
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--kr-primary-strong);
+  color: var(--kr-text);
   font-weight: 700;
 }
 
 .action-link--danger {
-  color: var(--kr-danger);
+  color: var(--kr-text-muted);
 }
 
 .thumb-card {

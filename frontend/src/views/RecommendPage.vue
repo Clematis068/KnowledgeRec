@@ -14,16 +14,17 @@
           <div class="toolbar-actions">
             <span class="toolbar-pill">{{ activeFeedLabel }}</span>
             <span class="toolbar-pill">{{ activeFeedCount }} 条</span>
-            <el-button type="primary" :icon="Refresh" :loading="currentLoading" @click="refreshCurrentFeed">
+            <el-button class="toolbar-button toolbar-button--primary" type="primary" :icon="Refresh" :loading="currentLoading" @click="refreshCurrentFeed">
               刷新
             </el-button>
             <el-button
               v-if="isRecommendFeed"
+              class="toolbar-button toolbar-button--text"
               text
               :icon="View"
               @click="showDebugPanel = true"
             >
-              Debug
+              调试
             </el-button>
           </div>
         </header>
@@ -317,13 +318,52 @@ onBeforeUnmount(() => {
   align-items: center;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--kr-border);
+  border: 1px solid var(--kr-border-strong);
   border-radius: 999px;
-  color: var(--kr-text-soft);
+  color: var(--kr-text);
   font-size: 13px;
   font-weight: 700;
-  background: var(--kr-surface);
+  background: rgba(255, 255, 255, 0.72);
 }
+
+
+.recommend-page :deep(.el-tabs__item) {
+  color: var(--kr-text-soft);
+  background: transparent !important;
+}
+
+.recommend-page :deep(.el-tabs__item:hover),
+.recommend-page :deep(.el-tabs__item.is-active) {
+  color: var(--kr-text) !important;
+  background: transparent !important;
+}
+
+.recommend-page :deep(.el-tabs__active-bar) {
+  background: var(--kr-text) !important;
+}
+
+.toolbar-button.el-button--primary {
+  background: var(--kr-text) !important;
+  border-color: var(--kr-text) !important;
+  color: #fff !important;
+}
+
+.toolbar-button.el-button--primary:hover,
+.toolbar-button.el-button--primary:focus {
+  background: #000 !important;
+  border-color: #000 !important;
+}
+
+.toolbar-button.el-button--text {
+  color: var(--kr-text) !important;
+}
+
+.toolbar-button.el-button--text:hover,
+.toolbar-button.el-button--text:focus {
+  color: #000 !important;
+  background: transparent !important;
+}
+
 
 .loading-area {
   display: grid;

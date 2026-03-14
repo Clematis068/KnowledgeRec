@@ -2,7 +2,7 @@
   <article class="post-card" @click="goToDetail">
     <div class="card-main">
       <div class="eyebrow-row">
-        <span class="eyebrow">{{ post.domain_name || 'Knowledge' }}</span>
+        <span class="eyebrow">{{ post.domain_name || '知识内容' }}</span>
         <span class="eyebrow-sep">·</span>
         <span class="eyebrow">{{ post.author_name || '匿名作者' }}</span>
       </div>
@@ -58,7 +58,7 @@ const formattedDate = computed(() => {
 })
 
 const thumbnailLabel = computed(() => {
-  const domainName = props.post.domain_name || 'Knowledge'
+  const domainName = props.post.domain_name || '知识内容'
   return domainName.length > 14 ? `${domainName.slice(0, 14)}…` : domainName
 })
 
@@ -141,8 +141,8 @@ function goToDetail() {
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  background: var(--kr-surface-alt);
-  color: var(--kr-text-soft);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--kr-text);
   font-size: 12px;
   font-weight: 700;
 }

@@ -2,10 +2,10 @@
 import { computed } from 'vue'
 
 const ROUTE_META = {
-  cf: { label: 'CF 协同过滤', color: '#409eff' },
-  graph: { label: 'Graph 图谱', color: '#67c23a' },
-  semantic: { label: 'Semantic 语义', color: '#e6a23c' },
-  hot: { label: 'Hot 热门召回', color: '#f56c6c' },
+  cf: { label: '协同过滤', color: '#409eff' },
+  graph: { label: '图谱召回', color: '#67c23a' },
+  semantic: { label: '语义召回', color: '#e6a23c' },
+  hot: { label: '热门召回', color: '#f56c6c' },
 }
 
 const TIME_SLOT_LABELS = {
@@ -74,7 +74,7 @@ function formatTimeSlot(value) {
 <template>
   <el-drawer
     :model-value="visible"
-    title="推荐 Debug"
+    title="推荐调试"
     direction="rtl"
     size="min(620px, calc(100vw - 24px))"
     destroy-on-close
@@ -85,7 +85,7 @@ function formatTimeSlot(value) {
     <div class="debug-panel">
       <div class="debug-head">
         <div>
-          <span class="panel-kicker">Realtime Debug</span>
+          <span class="panel-kicker">实时调试</span>
           <h2>推荐过程面板</h2>
         </div>
         <el-tag size="small" type="primary">{{ stageLabel }}</el-tag>
@@ -166,7 +166,7 @@ function formatTimeSlot(value) {
               <span>{{ row.label }}</span>
             </div>
             <div class="route-status">
-              <el-tag size="small" :type="row.available ? 'success' : 'info'">
+              <el-tag size="small" effect="plain">
                 {{ row.available ? '可用' : '无结果' }}
               </el-tag>
               <span class="route-count">{{ row.count }} 条</span>
@@ -182,7 +182,7 @@ function formatTimeSlot(value) {
                 <span class="sample-score">{{ formatScore(sample.score) }}</span>
               </div>
               <div class="sample-meta">
-                <el-tag v-if="sample.selected" size="small" type="warning">入选</el-tag>
+                <el-tag v-if="sample.selected" size="small" effect="plain">入选</el-tag>
                 <span v-else class="sample-alt">备选</span>
               </div>
             </div>
@@ -208,11 +208,11 @@ function formatTimeSlot(value) {
               <span class="sample-score">{{ formatScore(item.final_score) }}</span>
             </div>
             <div class="preview-breakdown">
-              <span>CF {{ formatScore(item.cf_score) }}</span>
-              <span>Graph {{ formatScore(item.graph_score) }}</span>
-              <span>Semantic {{ formatScore(item.semantic_score) }}</span>
-              <span>Hot {{ formatScore(item.hot_score) }}</span>
-              <span>Context {{ formatScore(item.context_score) }}</span>
+              <span>协同过滤 {{ formatScore(item.cf_score) }}</span>
+              <span>图谱 {{ formatScore(item.graph_score) }}</span>
+              <span>语义 {{ formatScore(item.semantic_score) }}</span>
+              <span>热门 {{ formatScore(item.hot_score) }}</span>
+              <span>上下文 {{ formatScore(item.context_score) }}</span>
             </div>
           </div>
         </div>
@@ -236,8 +236,8 @@ function formatTimeSlot(value) {
               <span class="sample-score">{{ formatScore(item.final_score) }}</span>
             </div>
             <div class="preview-breakdown">
-              <span>Context {{ formatScore(item.context_score) }}</span>
-              <span>Penalty {{ formatScore(item.negative_penalty) }}</span>
+              <span>上下文 {{ formatScore(item.context_score) }}</span>
+              <span>惩罚 {{ formatScore(item.negative_penalty) }}</span>
             </div>
           </div>
         </div>
@@ -280,8 +280,8 @@ function formatTimeSlot(value) {
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--kr-primary-strong);
-  background: var(--kr-primary-soft);
+  color: var(--kr-text);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .debug-head h2 {
@@ -418,7 +418,7 @@ function formatTimeSlot(value) {
 }
 
 .sample-title:hover {
-  color: var(--kr-primary);
+  color: var(--kr-text);
 }
 
 .sample-score {

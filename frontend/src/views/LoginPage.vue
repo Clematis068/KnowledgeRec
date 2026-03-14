@@ -44,7 +44,7 @@ function goToDashboard() {
   <div class="login-page">
     <div class="login-shell">
       <section class="login-copy card-panel">
-        <span class="page-kicker">Login</span>
+        <span class="page-kicker">登录</span>
         <h1>登录后进入你的推荐页。</h1>
         <p>未登录时先到这里，已登录时可直接返回推荐页。</p>
 
@@ -65,7 +65,7 @@ function goToDashboard() {
               <el-icon :size="20"><Connection /></el-icon>
             </div>
             <div>
-              <h2>KnowledgeRec</h2>
+              <h2>知识推荐</h2>
               <p>登录 / 注册分开处理。</p>
             </div>
           </div>

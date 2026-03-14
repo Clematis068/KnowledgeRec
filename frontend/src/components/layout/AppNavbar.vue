@@ -4,7 +4,7 @@
       <div class="brand-mark">
         <el-icon :size="18"><Connection /></el-icon>
       </div>
-      <span class="brand-title">KnowledgeRec</span>
+      <span class="brand-title">知识推荐</span>
     </div>
 
     <div class="navbar-search">
@@ -451,7 +451,17 @@ onBeforeUnmount(() => {
 }
 
 .nav-action {
-  color: var(--kr-text-soft);
+  --el-button-text-color: var(--kr-text);
+  --el-button-hover-text-color: var(--kr-text);
+  --el-button-active-text-color: var(--kr-text);
+  --el-button-bg-color: transparent;
+  --el-button-hover-bg-color: transparent;
+  --el-button-active-bg-color: transparent;
+  --el-button-border-color: transparent;
+  --el-button-hover-border-color: transparent;
+  --el-button-active-border-color: transparent;
+  color: var(--kr-text);
+  font-weight: 700;
 }
 
 .icon-button {
@@ -475,7 +485,8 @@ onBeforeUnmount(() => {
 }
 
 .user-avatar {
-  background: var(--kr-primary);
+  color: #fff;
+  background: #111111;
 }
 
 .username {

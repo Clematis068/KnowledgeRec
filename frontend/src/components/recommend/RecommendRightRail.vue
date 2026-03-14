@@ -1,7 +1,7 @@
 <template>
   <aside class="right-rail">
     <section class="rail-section">
-      <h2 class="rail-title">Staff Picks</h2>
+      <h2 class="rail-title">精选内容</h2>
       <div class="pick-list">
         <article
           v-for="post in hotPicks"
@@ -10,8 +10,8 @@
           @click="goToPost(post.id)"
         >
           <div class="pick-topline">
-            <span class="pick-source">{{ post.domain_name || 'KnowledgeRec' }}</span>
-            <span class="pick-author">by {{ post.author_name || '匿名作者' }}</span>
+            <span class="pick-source">{{ post.domain_name || '知识推荐' }}</span>
+            <span class="pick-author">作者：{{ post.author_name || '匿名作者' }}</span>
           </div>
           <h3 class="pick-title">{{ post.title }}</h3>
           <div class="pick-meta">
@@ -23,7 +23,7 @@
     </section>
 
     <section class="rail-section">
-      <h2 class="rail-title">Recommended topics</h2>
+      <h2 class="rail-title">推荐主题</h2>
       <div class="topic-grid">
         <button
           v-for="topic in topicList"
@@ -38,7 +38,7 @@
     </section>
 
     <section class="rail-section">
-      <h2 class="rail-title">Explore</h2>
+      <h2 class="rail-title">继续探索</h2>
       <div class="mini-links">
         <button type="button" class="mini-link" @click="router.push('/hot')">查看热门趋势</button>
         <button type="button" class="mini-link" @click="router.push('/posts')">进入帖子广场</button>
@@ -154,8 +154,8 @@ onMounted(() => {
   padding: 0 14px;
   border: 1px solid var(--kr-border);
   border-radius: 999px;
-  background: var(--kr-surface-alt);
-  color: var(--kr-text-soft);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--kr-text);
   font-weight: 700;
 }
 
@@ -168,7 +168,7 @@ onMounted(() => {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--kr-primary-strong);
+  color: var(--kr-text);
   font-weight: 700;
   text-align: left;
 }

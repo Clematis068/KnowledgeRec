@@ -7,7 +7,7 @@
     <template v-if="post">
       <article class="article-shell">
         <header class="article-header">
-          <span class="article-kicker">{{ post.domain_name || 'Knowledge' }}</span>
+          <span class="article-kicker">{{ post.domain_name || '知识内容' }}</span>
           <h1 class="article-title">{{ post.title }}</h1>
           <p v-if="post.summary" class="article-deck">{{ post.summary }}</p>
 
@@ -78,11 +78,11 @@
         <div class="article-layout">
           <aside class="article-sidebar">
             <div class="sidebar-block">
-              <span class="sidebar-kicker">Article note</span>
+              <span class="sidebar-kicker">阅读说明</span>
               <p class="sidebar-text">采用更窄的正文宽度、更大的标题和更克制的分隔，让阅读更像长文页面。</p>
             </div>
             <div class="sidebar-block">
-              <span class="sidebar-kicker">Snapshot</span>
+              <span class="sidebar-kicker">内容概览</span>
               <ul class="sidebar-list">
                 <li class="sidebar-item">领域：{{ post.domain_name || '未分类' }}</li>
                 <li class="sidebar-item">阅读时长：约 {{ readingMinutes }} 分钟</li>
@@ -107,7 +107,7 @@
 
       <section class="comments-shell">
         <div class="comments-header">
-          <span class="comments-kicker">Discussion</span>
+          <span class="comments-kicker">讨论</span>
           <h2 class="comments-title">评论区</h2>
         </div>
         <CommentSection :post-id="route.params.id" />

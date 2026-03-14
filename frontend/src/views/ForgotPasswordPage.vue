@@ -161,7 +161,7 @@ onBeforeUnmount(clearCountdown)
   <div class="forgot-page">
     <div class="forgot-shell">
       <section class="forgot-copy card-panel">
-        <span class="page-kicker">Password</span>
+        <span class="page-kicker">重置密码</span>
         <h1>通过邮箱验证码重置你的密码。</h1>
         <p>输入注册邮箱，完成验证后即可设置一个新的登录密码。</p>
 

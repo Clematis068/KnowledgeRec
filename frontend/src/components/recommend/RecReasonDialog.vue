@@ -14,7 +14,7 @@
     </div>
     <div v-else class="reason-panel">
       <div class="reason-head">
-        <span class="reason-kicker">Why this post</span>
+        <span class="reason-kicker">推荐说明</span>
         <h3>推荐给你的原因</h3>
       </div>
       <div class="reason-scroll">
@@ -103,8 +103,8 @@ watch(visible, (val) => {
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--kr-primary-strong);
-  background: var(--kr-primary-soft);
+  color: var(--kr-text);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .reason-scroll {

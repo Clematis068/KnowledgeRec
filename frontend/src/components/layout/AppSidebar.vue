@@ -13,7 +13,6 @@
         </span>
         <span class="nav-copy">
           <span class="nav-label">{{ item.label }}</span>
-          <span class="nav-subtext">{{ item.subtext }}</span>
         </span>
       </button>
     </nav>
@@ -21,7 +20,7 @@
     <div class="sidebar-divider"></div>
 
     <section class="sidebar-section">
-      <span class="section-title">Quick actions</span>
+      <span class="section-title">快捷操作</span>
       <button
         v-for="item in secondaryLinks"
         :key="item.key"
@@ -34,7 +33,6 @@
         </span>
         <span class="nav-copy">
           <span class="nav-label">{{ item.label }}</span>
-          <span class="nav-subtext">{{ item.subtext }}</span>
         </span>
       </button>
     </section>
@@ -54,36 +52,36 @@ const authStore = useAuthStore()
 const primaryLinks = computed(() => [
   {
     key: 'recommend',
-    label: 'Home',
-    subtext: '推荐首页',
+    label: '首页',
+    subtext: '',
     route: '/recommend',
     icon: House,
   },
   {
     key: 'posts',
-    label: 'Library',
-    subtext: '帖子广场',
+    label: '帖子广场',
+    subtext: '',
     route: '/posts',
     icon: Collection,
   },
   {
     key: 'profile',
-    label: 'Profile',
-    subtext: '个人资料',
+    label: '个人资料',
+    subtext: '',
     route: authStore.isLoggedIn ? `/users/${authStore.userId}` : '/login',
     icon: User,
   },
   {
     key: 'my-posts',
-    label: 'Stories',
-    subtext: '我的发帖',
+    label: '我的发帖',
+    subtext: '',
     route: authStore.isLoggedIn ? '/my-posts' : '/login',
     icon: Document,
   },
   {
     key: 'hot',
-    label: 'Stats',
-    subtext: '热门趋势',
+    label: '热门趋势',
+    subtext: '',
     route: '/hot',
     icon: TrendCharts,
   },
@@ -92,15 +90,15 @@ const primaryLinks = computed(() => [
 const secondaryLinks = computed(() => [
   {
     key: 'write',
-    label: 'Write',
-    subtext: '发布内容',
+    label: '发布内容',
+    subtext: '',
     route: authStore.isLoggedIn ? '/create-post' : '/login',
     icon: EditPen,
   },
   {
     key: 'search',
-    label: 'Search',
-    subtext: '搜索帖子或作者',
+    label: '搜索',
+    subtext: '',
     action: 'focus-search',
     icon: Search,
   },

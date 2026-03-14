@@ -65,8 +65,8 @@ function logout() {
             <el-icon :size="18"><Connection /></el-icon>
           </div>
           <div class="brand-copy">
-            <h1 class="brand-title">KnowledgeRec</h1>
-            <p class="brand-subtitle">A cleaner entrance for reading, recommendation and discussion.</p>
+            <h1 class="brand-title">知识推荐</h1>
+            <p class="brand-subtitle">更清爽的阅读、推荐与讨论入口。</p>
           </div>
         </div>
 
@@ -80,7 +80,7 @@ function logout() {
 
       <section class="hero-section">
         <div class="hero-main">
-          <span class="hero-kicker">Editorial Home</span>
+          <span class="hero-kicker">首页</span>
           <h2 class="hero-title">让推荐、阅读与讨论，像翻阅一份更干净的线上刊物。</h2>
           <p class="hero-deck">
             首页不再像一个功能面板，而是一个有节奏的阅读入口。你可以从推荐流开始，也可以直接进入热门话题和帖子广场。
@@ -99,7 +99,7 @@ function logout() {
 
         <aside class="hero-aside">
           <div v-if="authStore.isLoggedIn" class="account-panel">
-            <span class="panel-kicker">Your account</span>
+            <span class="panel-kicker">我的账号</span>
             <div class="account-head">
               <el-avatar :size="52" :icon="UserFilled" class="account-avatar" />
               <div>
@@ -114,13 +114,13 @@ function logout() {
           </div>
 
           <div v-else class="account-panel">
-            <span class="panel-kicker">Getting started</span>
+            <span class="panel-kicker">开始使用</span>
             <strong class="guest-title">先登录，再开始个性化阅读。</strong>
             <p class="guest-note">注册后可以保存偏好、接收推荐，并围绕主题继续追踪内容。</p>
           </div>
 
           <div class="edition-panel">
-            <span class="panel-kicker">Edition note</span>
+            <span class="panel-kicker">页面说明</span>
             <ul class="note-list">
               <li v-for="note in editorialNotes" :key="note" class="note-item">{{ note }}</li>
             </ul>
@@ -139,7 +139,7 @@ function logout() {
             <div class="feature-icon">
               <el-icon :size="18"><component :is="item.icon" /></el-icon>
             </div>
-            <span class="feature-kicker">Section</span>
+            <span class="feature-kicker">模块</span>
           </div>
           <h3 class="feature-title">{{ item.title }}</h3>
           <p class="feature-text">{{ item.description }}</p>

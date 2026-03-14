@@ -184,7 +184,7 @@ onBeforeUnmount(clearCountdown)
   <div class="register-page">
     <div class="register-shell">
       <section class="register-copy card-panel">
-        <span class="page-kicker">Register</span>
+        <span class="page-kicker">注册</span>
         <h1>三步创建你的社区账号。</h1>
         <p>先填账号信息，再验证邮箱，最后选择兴趣。</p>
 
