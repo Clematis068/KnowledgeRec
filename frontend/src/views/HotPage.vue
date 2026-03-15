@@ -81,7 +81,7 @@ onMounted(async () => {
   font-size: 1.05rem;
   font-weight: 900;
   color: var(--kr-text-soft);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(240, 232, 255, 0.92));
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay-soft);
   flex-shrink: 0;
   margin-top: 12px;
@@ -89,17 +89,17 @@ onMounted(async () => {
 
 .rank-gold {
   color: #9a5b00;
-  background: linear-gradient(145deg, rgba(255, 244, 214, 0.98), rgba(255, 228, 132, 0.78));
+  background: #fef6e0;
 }
 
 .rank-silver {
   color: #5f6b85;
-  background: linear-gradient(145deg, rgba(244, 247, 255, 0.98), rgba(219, 228, 245, 0.88));
+  background: #f0f3fa;
 }
 
 .rank-bronze {
   color: #9f4c2f;
-  background: linear-gradient(145deg, rgba(255, 235, 224, 0.98), rgba(247, 192, 162, 0.86));
+  background: #fdf0ea;
 }
 
 .hot-card-wrapper {

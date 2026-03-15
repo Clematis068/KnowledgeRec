@@ -404,7 +404,7 @@ function logout() {
 .surface-card {
   border: 1px solid var(--kr-border);
   border-radius: 28px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(247, 247, 245, 0.9));
+  background: var(--kr-surface);
 }
 
 .status-card {

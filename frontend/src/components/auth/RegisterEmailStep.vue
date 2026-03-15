@@ -114,7 +114,7 @@ function handleInput(value) {
   padding: 18px;
   border-radius: 24px;
   border: 1px solid var(--kr-border);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(239, 247, 255, 0.92));
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay-soft);
 }
 

@@ -138,7 +138,7 @@ function goToDashboard() {
 .login-card {
   border: 1px solid var(--kr-border);
   border-radius: 34px;
-  background: linear-gradient(145deg, rgba(255, 253, 249, 0.98), rgba(247, 238, 228, 0.96));
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay);
 }
 
@@ -148,9 +148,7 @@ function goToDashboard() {
   justify-content: space-between;
   min-height: 540px;
   padding: 34px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 179, 167, 0.32), transparent 26%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(241, 232, 255, 0.92));
+  background: var(--kr-bg-soft);
 }
 
 .page-kicker {
@@ -207,8 +205,8 @@ function goToDashboard() {
   height: 50px;
   border-radius: 18px;
   color: #fff;
-  background: linear-gradient(145deg, var(--kr-primary), #ffb29b);
-  box-shadow: 10px 10px 18px rgba(240, 147, 125, 0.28), -6px -6px 14px rgba(255, 255, 255, 0.94);
+  background: var(--kr-primary);
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .login-form-wrap {

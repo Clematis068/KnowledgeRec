@@ -22,6 +22,13 @@
                 {{ isFollowing ? '已关注' : '关注' }}
               </el-button>
               <el-button
+                v-if="!isOwnProfile && authStore.isLoggedIn"
+                size="small"
+                @click="router.push({ path: '/notifications', query: { chat: user.id, username: user.username } })"
+              >
+                私信
+              </el-button>
+              <el-button
                 v-if="isOwnProfile"
                 size="small"
                 @click="openEditDialog"

@@ -112,7 +112,7 @@ watch(visible, (val) => {
   overflow: auto;
   padding: 18px;
   border-radius: 24px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(239, 247, 255, 0.92));
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay-soft);
 }
 

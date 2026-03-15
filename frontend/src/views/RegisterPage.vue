@@ -307,16 +307,14 @@ onBeforeUnmount(clearCountdown)
 .register-card {
   border: 1px solid var(--kr-border);
   border-radius: 34px;
-  background: linear-gradient(145deg, rgba(255, 253, 249, 0.98), rgba(247, 238, 228, 0.96));
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay);
 }
 
 .register-copy {
   min-height: 320px;
   padding: 34px;
-  background:
-    radial-gradient(circle at top right, rgba(143, 214, 180, 0.28), transparent 28%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(241, 232, 255, 0.92));
+  background: var(--kr-bg-soft);
 }
 
 .page-kicker {
@@ -372,8 +370,8 @@ onBeforeUnmount(clearCountdown)
   height: 50px;
   border-radius: 18px;
   color: #fff;
-  background: linear-gradient(145deg, var(--kr-secondary), #9dd9ef);
-  box-shadow: 10px 10px 18px rgba(126, 200, 227, 0.28), -6px -6px 14px rgba(255, 255, 255, 0.94);
+  background: var(--kr-secondary);
+  box-shadow: var(--kr-shadow-clay-soft);
 }
 
 .steps {

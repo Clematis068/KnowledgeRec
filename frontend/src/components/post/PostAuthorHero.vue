@@ -126,7 +126,7 @@ function handleToggleFollow() {
   padding: 18px 20px;
   border: 1px solid var(--kr-border);
   border-radius: 28px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(248, 245, 240, 0.84));
+  background: var(--kr-surface);
 }
 
 .author-row {

@@ -71,6 +71,12 @@ const routes = [
         component: () => import('../views/SearchPage.vue'),
       },
       {
+        path: 'notifications',
+        name: 'Notifications',
+        component: () => import('../views/NotificationPage.vue'),
+        meta: { requiresAuth: true },
+      },
+      {
         path: 'users',
         name: 'UserList',
         component: () => import('../views/UserListPage.vue'),
@@ -79,6 +85,11 @@ const routes = [
         path: 'users/:id',
         name: 'UserDetail',
         component: () => import('../views/UserDetailPage.vue'),
+      },
+      {
+        path: 'evaluation',
+        name: 'Evaluation',
+        component: () => import('../views/EvaluationPage.vue'),
       },
     ],
   },

@@ -193,9 +193,9 @@ function saveProfile() {
 
 .panel {
   padding: 20px;
-  border: 3px solid #e6cdb9;
+  border: 1px solid var(--kr-border);
   border-radius: 24px;
-  background: linear-gradient(145deg, #fffdf9, #f7ede1);
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay-soft);
 }
 

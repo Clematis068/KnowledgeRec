@@ -60,8 +60,11 @@
           <el-icon><EditPen /></el-icon>
           写作
         </el-button>
-        <button type="button" class="icon-button" @click="router.push('/hot')" aria-label="热门">
+        <button type="button" class="icon-button notification-btn" @click="router.push('/notifications')" aria-label="通知">
           <el-icon><Bell /></el-icon>
+          <span v-if="notificationStore.totalCount > 0" class="notification-badge">
+            {{ notificationStore.totalCount > 99 ? '99+' : notificationStore.totalCount }}
+          </span>
         </button>
 
         <el-dropdown @command="handleCommand">
@@ -75,6 +78,7 @@
               <el-dropdown-item command="recommend">我的推荐</el-dropdown-item>
               <el-dropdown-item command="my-posts">我的发帖</el-dropdown-item>
               <el-dropdown-item command="profile">个人资料</el-dropdown-item>
+              <el-dropdown-item command="evaluation">实验评估</el-dropdown-item>
               <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -89,11 +93,12 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowDown, Bell, Connection, EditPen, Search, UserFilled } from '@element-plus/icons-vue'
 import { getHotPosts } from '../../api/post'
 import { useAuthStore } from '../../stores/auth'
+import { useNotificationStore } from '../../stores/notification'
 
 const HOT_SUGGESTION_LIMIT = 5
 const SEARCH_HISTORY_LIMIT = 5
@@ -101,6 +106,7 @@ const SEARCH_HISTORY_STORAGE_KEY = 'app:search-history'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const notificationStore = useNotificationStore()
 const searchInputRef = ref()
 const searchQuery = ref('')
 const searchType = ref('post')
@@ -297,6 +303,8 @@ function handleCommand(cmd) {
     router.push('/my-posts')
   } else if (cmd === 'profile') {
     router.push(`/users/${authStore.userId}`)
+  } else if (cmd === 'evaluation') {
+    router.push('/evaluation')
   } else if (cmd === 'logout') {
     authStore.logout()
     router.push('/login')
@@ -305,10 +313,22 @@ function handleCommand(cmd) {
 
 onMounted(() => {
   window.addEventListener('app:focus-search', handleFocusSearch)
+  if (authStore.isLoggedIn) {
+    notificationStore.startListening(authStore.token)
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('app:focus-search', handleFocusSearch)
+  notificationStore.stopListening()
+})
+
+watch(() => authStore.isLoggedIn, (loggedIn) => {
+  if (loggedIn) {
+    notificationStore.startListening(authStore.token)
+  } else {
+    notificationStore.stopListening()
+  }
 })
 </script>
 
@@ -474,6 +494,28 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: var(--kr-surface);
   color: var(--kr-text-soft);
+}
+
+.notification-btn {
+  position: relative;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .user-info {

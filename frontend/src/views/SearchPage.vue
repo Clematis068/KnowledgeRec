@@ -95,7 +95,7 @@ watch(
   padding: 22px 24px 8px;
   border: 1px solid var(--kr-border);
   border-radius: 30px 30px 18px 18px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(241, 232, 255, 0.92));
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay-soft);
   font-size: clamp(2rem, 3vw, 3rem);
   font-weight: 800;
@@ -130,7 +130,7 @@ watch(
   margin-bottom: 12px;
   cursor: pointer;
   border: 1px solid var(--kr-border);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(240, 232, 255, 0.9));
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay-soft);
   transition: transform 0.2s ease;
 }

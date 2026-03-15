@@ -231,6 +231,18 @@ def follow_user(target_id):
     db.session.add(follow)
     db.session.commit()
 
+    # 发送关注通知
+    try:
+        from app.models.notification import create_notification
+        create_notification(
+            user_id=target_id,
+            sender_id=g.current_user.id,
+            notification_type='follow',
+        )
+        db.session.commit()
+    except Exception:
+        pass
+
     # 同步 Neo4j
     try:
         from app.services.neo4j_service import neo4j_service

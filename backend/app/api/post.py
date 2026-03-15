@@ -374,6 +374,20 @@ def record_behavior(post_id):
 
     db.session.commit()
 
+    # 发送互动通知（点赞/收藏/评论）
+    if behavior_type in ('like', 'favorite', 'comment') and post.author_id != user_id:
+        try:
+            from app.models.notification import create_notification
+            create_notification(
+                user_id=post.author_id,
+                sender_id=user_id,
+                notification_type=behavior_type,
+                post_id=post_id,
+            )
+            db.session.commit()
+        except Exception:
+            pass
+
     # 同步到 Neo4j（非阻塞，失败不影响主流程）
     try:
         from app.services.neo4j_service import neo4j_service

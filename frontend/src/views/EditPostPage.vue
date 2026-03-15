@@ -177,7 +177,7 @@ onMounted(() => {
   padding: 24px;
   border: 1px solid var(--kr-border);
   border-radius: 30px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(241, 232, 255, 0.92));
+  background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay-soft);
 }
 
