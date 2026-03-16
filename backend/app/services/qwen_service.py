@@ -6,7 +6,7 @@ from ..config import Config
 
 
 class QwenService:
-    """通义千问 API 封装，使用 OpenAI 兼容接口"""
+    """OPENAI接口"""
 
     def __init__(self):
         self.client = OpenAI(
