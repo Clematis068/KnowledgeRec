@@ -66,6 +66,4 @@ class QwenService:
         )
         return self.chat_json(content, system_prompt=system_prompt)
 
-
-# 全局单例
 qwen_service = QwenService()
