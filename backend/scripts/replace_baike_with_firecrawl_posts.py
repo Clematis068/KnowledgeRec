@@ -32,6 +32,9 @@ from app.models.tag import Tag
 from app.models.user import User
 
 
+from app.utils.markdown_cleaner import clean_markdown, markdown_to_plaintext
+
+
 COMMUNITY_LABELS = {
     "csdn": "CSDN",
     "cnblogs": "博客园",
@@ -80,29 +83,34 @@ def existing_source_urls() -> set[str]:
 
 
 def compose_content(record: dict) -> str:
-    community = COMMUNITY_LABELS.get(record.get("community"), record.get("community", "未知社区"))
-    keyword = record.get("keyword", "")
+    community_key = record.get("community", "")
+    community = COMMUNITY_LABELS.get(community_key, community_key or "未知社区")
     url = record.get("url", "")
-    description = (record.get("description") or "").strip()
     markdown = (record.get("markdown") or "").strip()
 
-    header_lines = [
-        f"来源社区：{community}",
-        f"抓取关键词：{keyword}",
-        f"原文链接：{url}",
-    ]
-    if description:
-        header_lines.append(f"原文摘要：{description}")
-    header = "\n".join(header_lines)
+    # 清洗 markdown 噪声
+    cleaned = clean_markdown(markdown, community_key)
 
-    content = f"{header}\n\n---\n\n{markdown}".strip()
+    # 来源信息放末尾
+    footer_parts = []
+    if url:
+        footer_parts.append(f"原文链接：{url}")
+    if community:
+        footer_parts.append(f"来源：{community}")
+
+    if footer_parts:
+        content = cleaned + "\n\n---\n\n" + " | ".join(footer_parts)
+    else:
+        content = cleaned
+
     return content[:15000]
 
 
 def summary_for(record: dict, content: str) -> str:
     summary = (record.get("description") or "").strip()
     if not summary:
-        summary = content.replace("\n", " ")[:300]
+        # 从清洗后的 markdown 中提取纯文本摘要
+        summary = markdown_to_plaintext(content, max_length=300)
     return summary[:500]
 
 

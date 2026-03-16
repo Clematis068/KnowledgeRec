@@ -95,12 +95,8 @@
           <section class="article-content">
             <div class="content-block">
               <span class="content-kicker">正文</span>
-              <div class="content-body">
-                <p v-for="(paragraph, index) in contentParagraphs" :key="`${index}-${paragraph.slice(0, 16)}`" class="content-paragraph">
-                  {{ paragraph }}
-                </p>
-                <p v-if="!contentParagraphs.length" class="content-paragraph">暂无正文内容。</p>
-              </div>
+              <div class="content-body markdown-body" v-html="renderedContent"></div>
+              <p v-if="!renderedContent" class="content-paragraph">暂无正文内容。</p>
             </div>
           </section>
         </div>
@@ -133,6 +129,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { View, Star, StarFilled, Collection, CollectionTag, CircleClose } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
+import { marked } from 'marked'
 import {
   blockPostAuthor,
   blockPostDomain,
@@ -183,12 +180,24 @@ const formattedCreatedAt = computed(() => {
     day: 'numeric',
   }).format(date)
 })
-const contentParagraphs = computed(() => {
+// 配置 marked
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+})
+
+// 自定义图片渲染：加 lazy loading 和自适应样式
+const renderer = new marked.Renderer()
+renderer.image = ({ href, title, text }) => {
+  const titleAttr = title ? ` title="${title}"` : ''
+  return `<img src="${href}" alt="${text || ''}"${titleAttr} loading="lazy" style="max-width:100%;height:auto;border-radius:6px;margin:8px 0;" />`
+}
+marked.use({ renderer })
+
+const renderedContent = computed(() => {
   const content = post.value?.content || ''
-  return content
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
+  if (!content) return ''
+  return marked.parse(content)
 })
 
 async function fetchPost() {
@@ -415,8 +424,7 @@ async function toggleBlockDomain() {
 }
 
 .sidebar-text,
-.sidebar-item,
-.content-paragraph {
+.sidebar-item {
   color: var(--kr-text-soft);
   line-height: 1.95;
 }
@@ -512,10 +520,117 @@ async function toggleBlockDomain() {
   margin-top: 12px;
 }
 
-.content-paragraph {
-  margin-bottom: 1.4em;
+/* ── Markdown 正文样式 ── */
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) {
+  margin: 1.4em 0 0.6em;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--kr-text);
+}
+
+.markdown-body :deep(h1) { font-size: 1.6rem; }
+.markdown-body :deep(h2) { font-size: 1.35rem; }
+.markdown-body :deep(h3) { font-size: 1.18rem; }
+.markdown-body :deep(h4) { font-size: 1.05rem; }
+
+.markdown-body :deep(p) {
+  margin-bottom: 1.2em;
   font-size: 1.02rem;
-  white-space: pre-line;
+  line-height: 1.95;
+  color: var(--kr-text-soft);
+}
+
+.markdown-body :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 12px 0;
+  cursor: zoom-in;
+}
+
+.markdown-body :deep(blockquote) {
+  margin: 1em 0;
+  padding: 0.6em 1.2em;
+  border-left: 3px solid var(--kr-primary);
+  background: rgba(0, 0, 0, 0.02);
+  color: var(--kr-text-soft);
+}
+
+.markdown-body :deep(pre) {
+  margin: 1em 0;
+  padding: 16px;
+  border-radius: 8px;
+  background: #f6f8fa;
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.markdown-body :deep(code) {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.88em;
+}
+
+.markdown-body :deep(:not(pre) > code) {
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 0.8em 0;
+  padding-left: 1.8em;
+  color: var(--kr-text-soft);
+  line-height: 1.9;
+}
+
+.markdown-body :deep(li) {
+  margin-bottom: 0.3em;
+}
+
+.markdown-body :deep(table) {
+  width: 100%;
+  margin: 1em 0;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  padding: 8px 12px;
+  border: 1px solid var(--kr-border);
+  text-align: left;
+}
+
+.markdown-body :deep(th) {
+  background: rgba(0, 0, 0, 0.03);
+  font-weight: 600;
+}
+
+.markdown-body :deep(hr) {
+  margin: 2em 0;
+  border: none;
+  border-top: 1px solid var(--kr-border);
+}
+
+.markdown-body :deep(a) {
+  color: var(--kr-primary);
+  text-decoration: none;
+}
+
+.markdown-body :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.markdown-body :deep(strong) {
+  font-weight: 700;
+  color: var(--kr-text);
 }
 
 .comments-header {
