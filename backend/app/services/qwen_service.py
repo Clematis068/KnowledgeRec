@@ -22,10 +22,12 @@ class QwenService:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": message})
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-        )
+        kwargs = {"model": self.model, "messages": messages}
+        # qwen3 系列默认开启思维链，会大量消耗 token，显式关闭
+        if "qwen3" in self.model.lower():
+            kwargs["extra_body"] = {"enable_thinking": False}
+
+        response = self.client.chat.completions.create(**kwargs)
         return response.choices[0].message.content
 
     def chat_with_history(self, messages: list[dict]) -> str:
@@ -44,7 +46,7 @@ class QwenService:
         )
         return response.data[0].embedding
 
-    def chat_json(self, message: str, system_prompt: str = None) -> dict:
+    def chat_json(self, message: str, system_prompt: str) -> dict:
         """单轮对话并提取 JSON 对象"""
         content = self.chat(message, system_prompt=system_prompt).strip()
         try:

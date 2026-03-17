@@ -79,10 +79,6 @@
         <div class="article-layout">
           <aside class="article-sidebar">
             <div class="sidebar-block">
-              <span class="sidebar-kicker">阅读说明</span>
-              <p class="sidebar-text">采用更窄的正文宽度、更大的标题和更克制的分隔，让阅读更像长文页面。</p>
-            </div>
-            <div class="sidebar-block">
               <span class="sidebar-kicker">内容概览</span>
               <ul class="sidebar-list">
                 <li class="sidebar-item">领域：{{ post.domain_name || '未分类' }}</li>
@@ -124,12 +120,24 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { View, Star, StarFilled, Collection, CollectionTag, CircleClose } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { marked } from 'marked'
+import hljs from 'highlight.js/lib/core'
+import python from 'highlight.js/lib/languages/python'
+import javascript from 'highlight.js/lib/languages/javascript'
+import java from 'highlight.js/lib/languages/java'
+import cpp from 'highlight.js/lib/languages/cpp'
+import sql from 'highlight.js/lib/languages/sql'
+import bash from 'highlight.js/lib/languages/bash'
+import json_ from 'highlight.js/lib/languages/json'
+import xml from 'highlight.js/lib/languages/xml'
+import css from 'highlight.js/lib/languages/css'
+import go from 'highlight.js/lib/languages/go'
+import 'highlight.js/styles/github.css'
 import {
   blockPostAuthor,
   blockPostDomain,
@@ -148,6 +156,22 @@ import { useAuthStore } from '../stores/auth'
 import CommentSection from '../components/post/CommentSection.vue'
 import PostAuthorHero from '../components/post/PostAuthorHero.vue'
 import UnfollowAuthorDialog from '../components/post/UnfollowAuthorDialog.vue'
+
+// 注册 highlight.js 语言
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+hljs.registerLanguage('java', java)
+hljs.registerLanguage('cpp', cpp)
+hljs.registerLanguage('c', cpp)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('shell', bash)
+hljs.registerLanguage('json', json_)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('go', go)
 
 const route = useRoute()
 const router = useRouter()
@@ -186,17 +210,41 @@ marked.setOptions({
   breaks: true,
 })
 
-// 自定义图片渲染：加 lazy loading 和自适应样式
+// 自定义渲染器
 const renderer = new marked.Renderer()
+
+// 代码高亮
+renderer.code = ({ text, lang }) => {
+  const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
+  let highlighted
+  try {
+    highlighted = language !== 'plaintext'
+      ? hljs.highlight(text, { language }).value
+      : text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  } catch {
+    highlighted = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
+  const langLabel = lang ? `<span class="code-lang-label">${lang}</span>` : ''
+  return `<div class="code-block-wrapper">${langLabel}<pre><code class="hljs language-${language}">${highlighted}</code></pre></div>`
+}
+
+// 图片：lazy loading + 自适应（过滤文件名标注）
 renderer.image = ({ href, title, text }) => {
   const titleAttr = title ? ` title="${title}"` : ''
-  return `<img src="${href}" alt="${text || ''}"${titleAttr} loading="lazy" style="max-width:100%;height:auto;border-radius:6px;margin:8px 0;" />`
+  const isFilename = text && /^[\w\-. ]*\.(jpg|jpeg|png|gif|webp|bmp|svg|ico)$/i.test(text.trim())
+  const caption = text && !isFilename ? `<figcaption>${text}</figcaption>` : ''
+  return `<figure class="article-figure"><img src="${href}" alt="${isFilename ? '' : (text || '')}"${titleAttr} loading="lazy" />${caption}</figure>`
 }
+
 marked.use({ renderer })
 
 const renderedContent = computed(() => {
-  const content = post.value?.content || ''
+  let content = post.value?.content || ''
   if (!content) return ''
+  // 清理残留的互动文本行（评论/点赞/收藏/关注相关）
+  content = content.replace(/^.*(?:评论\s*\d*|点赞\s*\d*|收藏\s*\d*|喜欢\s*\d*|分享\s*\d*)\s*$/gm, '')
+  // 清理独立的图片文件名行
+  content = content.replace(/^[\w\-. ]*\.(?:jpg|jpeg|png|gif|webp|bmp|svg|ico)\s*$/gim, '')
   return marked.parse(content)
 })
 
@@ -527,59 +575,101 @@ async function toggleBlockDomain() {
 .markdown-body :deep(h4),
 .markdown-body :deep(h5),
 .markdown-body :deep(h6) {
-  margin: 1.4em 0 0.6em;
+  margin: 1.6em 0 0.6em;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.35;
   color: var(--kr-text);
 }
 
-.markdown-body :deep(h1) { font-size: 1.6rem; }
-.markdown-body :deep(h2) { font-size: 1.35rem; }
-.markdown-body :deep(h3) { font-size: 1.18rem; }
-.markdown-body :deep(h4) { font-size: 1.05rem; }
+.markdown-body :deep(h1) { font-size: 1.65rem; }
+.markdown-body :deep(h2) { font-size: 1.4rem; border-bottom: 1px solid var(--kr-border); padding-bottom: 0.3em; }
+.markdown-body :deep(h3) { font-size: 1.2rem; }
+.markdown-body :deep(h4) { font-size: 1.08rem; }
 
 .markdown-body :deep(p) {
-  margin-bottom: 1.2em;
+  margin-bottom: 1.25em;
   font-size: 1.02rem;
   line-height: 1.95;
   color: var(--kr-text-soft);
+  word-break: break-word;
 }
 
 .markdown-body :deep(img) {
   max-width: 100%;
   height: auto;
   border-radius: 6px;
-  margin: 12px 0;
+  margin: 4px 0;
   cursor: zoom-in;
 }
 
+.markdown-body :deep(.article-figure) {
+  margin: 1.2em 0;
+  text-align: center;
+}
+
+.markdown-body :deep(.article-figure figcaption) {
+  margin-top: 8px;
+  font-size: 0.88rem;
+  color: var(--kr-text-muted);
+  line-height: 1.5;
+}
+
 .markdown-body :deep(blockquote) {
-  margin: 1em 0;
-  padding: 0.6em 1.2em;
+  margin: 1.2em 0;
+  padding: 0.8em 1.2em;
   border-left: 3px solid var(--kr-primary);
   background: rgba(0, 0, 0, 0.02);
   color: var(--kr-text-soft);
+  border-radius: 0 6px 6px 0;
+}
+
+.markdown-body :deep(blockquote p:last-child) {
+  margin-bottom: 0;
+}
+
+/* ── 代码块 ── */
+.markdown-body :deep(.code-block-wrapper) {
+  position: relative;
+  margin: 1.2em 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--kr-border);
+}
+
+.markdown-body :deep(.code-lang-label) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--kr-text-muted);
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 0 8px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .markdown-body :deep(pre) {
-  margin: 1em 0;
-  padding: 16px;
-  border-radius: 8px;
+  margin: 0;
+  padding: 16px 20px;
   background: #f6f8fa;
   overflow-x: auto;
-  font-size: 0.9rem;
-  line-height: 1.6;
+  font-size: 0.88rem;
+  line-height: 1.65;
 }
 
 .markdown-body :deep(code) {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
   font-size: 0.88em;
 }
 
 .markdown-body :deep(:not(pre) > code) {
   padding: 0.15em 0.4em;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(0, 0, 0, 0.06);
+  color: #d63384;
+  font-size: 0.85em;
 }
 
 .markdown-body :deep(ul),
@@ -594,16 +684,23 @@ async function toggleBlockDomain() {
   margin-bottom: 0.3em;
 }
 
+.markdown-body :deep(li > ul),
+.markdown-body :deep(li > ol) {
+  margin: 0.2em 0;
+}
+
 .markdown-body :deep(table) {
   width: 100%;
-  margin: 1em 0;
+  margin: 1.2em 0;
   border-collapse: collapse;
   font-size: 0.95rem;
+  overflow-x: auto;
+  display: block;
 }
 
 .markdown-body :deep(th),
 .markdown-body :deep(td) {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: 1px solid var(--kr-border);
   text-align: left;
 }
@@ -611,6 +708,7 @@ async function toggleBlockDomain() {
 .markdown-body :deep(th) {
   background: rgba(0, 0, 0, 0.03);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .markdown-body :deep(hr) {
@@ -622,15 +720,21 @@ async function toggleBlockDomain() {
 .markdown-body :deep(a) {
   color: var(--kr-primary);
   text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
 }
 
 .markdown-body :deep(a:hover) {
-  text-decoration: underline;
+  border-bottom-color: var(--kr-primary);
 }
 
 .markdown-body :deep(strong) {
   font-weight: 700;
   color: var(--kr-text);
+}
+
+.markdown-body :deep(em) {
+  font-style: italic;
 }
 
 .comments-header {

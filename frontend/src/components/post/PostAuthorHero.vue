@@ -13,7 +13,12 @@ const props = defineProps({
 const emit = defineEmits(['toggleFollow'])
 
 const domainLabel = computed(() => props.post?.domain_name || '知识内容')
-const titleText = computed(() => props.post?.title || '未命名帖子')
+const titleText = computed(() => {
+  let t = props.post?.title || '未命名帖子'
+  // 去除爬取来源后缀
+  t = t.replace(/\s*[-–—]\s*(?:CSDN博客|博客园|稀土掘金|开源中国|51CTO博客|OSCHINA[^]*)\s*$/, '')
+  return t.trim() || '未命名帖子'
+})
 const deckText = computed(() => props.post?.summary || '')
 const authorName = computed(() => props.post?.author_name || '匿名作者')
 const authorInitial = computed(() => authorName.value.charAt(0)?.toUpperCase() || '?')

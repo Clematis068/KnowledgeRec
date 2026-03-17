@@ -169,6 +169,12 @@ def import_records(records: list[dict], dry_run: bool) -> dict[str, object]:
 
     for index, record in enumerate(records):
         title = (record.get("title") or "").strip()[:255]
+        # 去除来源平台后缀
+        title = re.sub(
+            r"\s*[-–—]\s*(?:CSDN博客|博客园|稀土掘金|开源中国|51CTO博客|OSCHINA.*)\s*$",
+            "",
+            title,
+        ).strip()
         keyword = (record.get("keyword") or "").strip()
         url = (record.get("url") or "").strip()
         if not title:
