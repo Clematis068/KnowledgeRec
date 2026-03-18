@@ -281,10 +281,11 @@ h4,
 
 .el-tabs__item {
   height: 42px;
-  padding: 0 14px;
+  padding: 0 18px !important;
   border-radius: 999px;
   color: var(--kr-text-soft);
   font-weight: 700;
+  text-align: center;
 }
 
 .el-tabs__item:hover,
@@ -294,8 +295,7 @@ h4,
 }
 
 .el-tabs__active-bar {
-  height: 2px;
-  background: var(--kr-primary);
+  display: none;
 }
 
 .el-tag {
