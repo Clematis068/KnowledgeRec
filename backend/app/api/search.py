@@ -19,14 +19,69 @@ def search():
     per_page = request.args.get('per_page', 20, type=int)
 
     if not q:
+        if search_type == 'all':
+            return jsonify({"posts": [], "users": [], "post_total": 0, "user_total": 0})
         if search_type == 'author':
             return jsonify({"users": [], "total": 0, "page": page})
         return jsonify({"posts": [], "total": 0, "page": page})
+
+    if search_type == 'all':
+        return _search_all(q, page, per_page)
 
     if search_type == 'author':
         return _search_authors(q, page, per_page)
 
     return _search_posts(q, page, per_page)
+
+
+def _search_all(q, page, per_page):
+    """同时搜索帖子和用户，各返回一页"""
+    # 用户
+    like_pattern = f'%{q}%'
+    user_stmt = db.select(User).filter(User.username.like(like_pattern))
+    user_pagination = db.paginate(user_stmt, page=page, per_page=per_page)
+    users = [{
+        'id': u.id,
+        'username': u.username,
+        'bio': u.bio,
+    } for u in user_pagination.items]
+
+    # 帖子（复用 _search_posts 的语义排序逻辑）
+    post_stmt = db.select(Post).filter(
+        db.or_(
+            Post.title.like(like_pattern),
+            Post.content.like(like_pattern),
+        )
+    )
+    candidates = db.session.scalars(post_stmt).all()
+    candidates = filter_posts(candidates, g.current_user.id if g.current_user else None)
+
+    try:
+        from app.services.qwen_service import qwen_service
+        query_embedding = qwen_service.get_embedding(q)
+        scored = []
+        for post in candidates:
+            sim = cosine_similarity(query_embedding, post.content_embedding) if post.content_embedding else 0.0
+            scored.append((post, sim))
+        scored.sort(key=lambda x: x[1], reverse=True)
+    except Exception:
+        scored = [(p, 0.0) for p in candidates]
+
+    post_total = len(scored)
+    start = (page - 1) * per_page
+    page_items = scored[start:start + per_page]
+    posts = []
+    for post, sim in page_items:
+        d = post.to_dict()
+        d['relevance_score'] = round(sim, 4)
+        posts.append(d)
+
+    return jsonify({
+        "posts": posts,
+        "users": users,
+        "post_total": post_total,
+        "user_total": user_pagination.total,
+    })
 
 
 def _search_authors(q, page, per_page):
