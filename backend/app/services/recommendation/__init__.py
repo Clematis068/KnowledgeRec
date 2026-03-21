@@ -1,19 +1,124 @@
-"""推荐引擎入口：编排三路 Pipeline 并融合"""
+"""推荐引擎入口：多路召回 + GBDT精排 / 加权线性融合"""
+import logging
 import random
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
+
+from flask import current_app
+from sqlalchemy.orm import joinedload
 
 from app import db
 from app.models.behavior import UserBehavior
 from app.models.post import Post
+from app.services.redis_service import redis_service
 from app.utils.content_filter import get_blocked_author_ids, get_blocked_domain_ids
 from app.utils.context import compute_post_context_bonus, resolve_effective_context
 
 from .cf_engine import CFEngine
+from .feature_extractor import FeatureExtractor
+from .fusion import FusionEngine
 from .graph_engine import GraphEngine
 from .hot_engine import HotEngine
-from .semantic_engine import SemanticEngine
-from .fusion import FusionEngine
 from .logic_constraint_engine import LogicConstraintEngine
+from .ranker import GBDTRanker
+from .semantic_engine import SemanticEngine
 from .swing_engine import SwingEngine
+
+logger = logging.getLogger(__name__)
+
+POST_CACHE_TTL = 1800  # Post 元数据 Redis 缓存 30 分钟
+
+
+class _PostMeta:
+    """轻量 Post 代理，字段与 Post ORM 兼容，用于避免重复 DB 查询。"""
+    __slots__ = ('id', 'title', 'summary', 'author_id', 'domain_id',
+                 'view_count', 'like_count', 'tags', 'target_regions',
+                 'target_time_slots', 'created_at')
+
+    def __init__(self, data):
+        self.id = data['id']
+        self.title = data.get('title', '')
+        self.summary = data.get('summary')
+        self.author_id = data.get('author_id')
+        self.domain_id = data.get('domain_id')
+        self.view_count = data.get('view_count', 0)
+        self.like_count = data.get('like_count', 0)
+        self.target_regions = data.get('target_regions') or []
+        self.target_time_slots = data.get('target_time_slots') or []
+        # tags 存为轻量对象列表
+        tag_ids = data.get('tag_ids', [])
+        tag_names = data.get('tag_names', [])
+        self.tags = [type('Tag', (), {'id': tid, 'name': tn, 'domain_id': None})()
+                     for tid, tn in zip(tag_ids, tag_names)]
+        ca = data.get('created_at')
+        if ca and isinstance(ca, str):
+            from datetime import datetime
+            try:
+                self.created_at = datetime.fromisoformat(ca)
+            except Exception:
+                self.created_at = None
+        else:
+            self.created_at = ca
+
+
+def _batch_load_posts(post_ids):
+    """批量加载 Post，优先走 Redis 缓存，未命中再查 DB 并回填。
+    返回 {post_id: Post | _PostMeta}。
+    """
+    if not post_ids:
+        return {}
+
+    post_ids = list(set(post_ids))
+    result = {}
+
+    # 1) 尝试从 Redis 批量获取
+    import json as _json
+    cache_keys = [f"post_meta:{pid}" for pid in post_ids]
+    try:
+        cached_values = redis_service.client.mget(cache_keys)
+    except Exception:
+        cached_values = [None] * len(post_ids)
+
+    miss_ids = []
+    for pid, cached in zip(post_ids, cached_values):
+        if cached is not None:
+            try:
+                result[pid] = _PostMeta(_json.loads(cached))
+            except Exception:
+                miss_ids.append(pid)
+        else:
+            miss_ids.append(pid)
+
+    # 2) 未命中的查 DB 并写入缓存
+    if miss_ids:
+        posts = db.session.scalars(
+            db.select(Post)
+            .options(joinedload(Post.tags), joinedload(Post.author), joinedload(Post.domain))
+            .filter(Post.id.in_(miss_ids))
+        ).unique().all()
+
+        pipe = redis_service.client.pipeline(transaction=False)
+        for p in posts:
+            result[p.id] = p
+            meta = {
+                'id': p.id, 'title': p.title, 'summary': p.summary,
+                'author_id': p.author_id, 'domain_id': p.domain_id,
+                'view_count': p.view_count or 0, 'like_count': p.like_count or 0,
+                'tag_ids': [t.id for t in p.tags],
+                'tag_names': [t.name for t in p.tags],
+                'target_regions': p.target_regions or [],
+                'target_time_slots': p.target_time_slots or [],
+                'created_at': p.created_at.isoformat() if p.created_at else None,
+            }
+            pipe.setex(f"post_meta:{p.id}", POST_CACHE_TTL, _json.dumps(meta, ensure_ascii=False))
+        try:
+            pipe.execute()
+        except Exception:
+            pass
+
+    return result
+
 
 USER_STAGE_WEIGHTS = {
     'cold': {'cf': 0.00, 'swing': 0.00, 'graph': 0.23, 'semantic': 0.24, 'knowledge': 0.11, 'hot': 0.42},
@@ -21,17 +126,14 @@ USER_STAGE_WEIGHTS = {
     'active': {'cf': 0.28, 'swing': 0.08, 'graph': 0.22, 'semantic': 0.20, 'knowledge': 0.12, 'hot': 0.10},
 }
 
-MAX_SAME_AUTHOR = 2
-MAX_SAME_DOMAIN = 3
-COLD_MAX_SAME_AUTHOR = 3
-COLD_MAX_SAME_DOMAIN = 6
 DIVERSITY_BUFFER_MULTIPLIER = 4
-EXPLORATION_EPSILON = 0.10
-EXPLORATION_MAX_INSERTS = 2
 EXPLORATION_POOL_MULTIPLIER = 3
 
 
 class RecommendationEngine:
+
+    # 共享线程池：所有请求复用，避免高并发下线程数爆炸
+    _executor = ThreadPoolExecutor(max_workers=6, thread_name_prefix='recall')
 
     def __init__(self):
         self.cf = CFEngine()
@@ -41,6 +143,9 @@ class RecommendationEngine:
         self.hot = HotEngine()
         self.fusion = FusionEngine()
         self.logic = LogicConstraintEngine()
+        self.feature_extractor = FeatureExtractor()
+        self.ranker = GBDTRanker()
+        self.ranker.load()
 
     def recommend(
         self,
@@ -80,392 +185,529 @@ class RecommendationEngine:
         enable_swing=True,
     ):
         """
-        完整三路融合推荐
-        1. 协同过滤 -> cf_scores
-        2. Swing 小圈子召回 -> swing_scores
-        3. 图谱传播 -> graph_scores
-        4. 语义增强独立召回 -> semantic_scores
-        5. 知识关系召回 -> knowledge_scores
-        6. 加权融合 -> fusion ranking
-        7. 知识逻辑约束
-        8. 滑动窗口打散
-        9. 轻量探索插入
+        多路召回 + 加权线性融合推荐流水线。
         """
-        # Pipeline A: 协同过滤
-        cf_scores = self.cf.recommend(user_id)
+        # ── 多路召回 ──
+        results_map = self._parallel_recall(user_id, enable_llm, enable_hot, enable_swing)
 
-        # Pipeline B: Swing 小圈子召回
-        swing_scores = self.swing.recommend(user_id) if enable_swing else {}
-
-        # Pipeline C: 知识图谱传播
-        graph_scores = self.graph.recommend(user_id)
-
-        # Pipeline D: 语义增强独立召回，不再只对 CF/Graph 做 rerank
-        semantic_scores = self.semantic.recommend(
-            user_id,
-            enable_llm_rerank=enable_llm,
-        )
-
-        # Pipeline E: 热门召回，缓解冷启动和候选不足
-        hot_scores = self.hot.recommend(user_id) if enable_hot else {}
-
-        # Pipeline F: 基于 tag 关系的知识召回
-        knowledge_scores = self.logic.recall(user_id)
-
-        resolved_weights, debug_info = self._resolve_weights(
-            user_id,
-            cf_scores,
-            swing_scores,
-            graph_scores,
-            semantic_scores,
-            knowledge_scores,
-            hot_scores,
-            requested_weights=weights,
-        )
+        cf_scores = results_map['cf']
+        swing_scores = results_map['swing']
+        graph_scores = results_map['graph']
+        semantic_scores = results_map['semantic']
+        hot_scores = results_map['hot']
+        knowledge_scores = results_map['knowledge']
 
         excluded_ids = {
             int(post_id)
             for post_id in (exclude_post_ids or [])
             if str(post_id).isdigit()
         }
+
+        if self.ranker.is_available() and weights is None:
+            final_results, debug_info = self._gbdt_ranking_pipeline(
+                user_id, results_map, top_n, excluded_ids,
+                request_context, enable_exploration,
+            )
+        else:
+            final_results, debug_info = self._legacy_fusion_pipeline(
+                user_id, results_map, top_n, excluded_ids,
+                request_context, weights, enable_exploration, enable_swing,
+            )
+
+        # ── 公共 debug 信息 ──
+        final_post_ids = {item['post_id'] for item in final_results}
+        all_post_ids = final_post_ids.copy()
+        for scores in (cf_scores, swing_scores, graph_scores, semantic_scores, knowledge_scores, hot_scores):
+            for pid in sorted(scores, key=scores.get, reverse=True)[:5]:
+                all_post_ids.add(pid)
+        post_cache = _batch_load_posts(all_post_ids)
+
+        debug_info['recall_stats'] = getattr(self, '_last_recall_stats', {})
+        debug_info['exploration_enabled'] = bool(enable_exploration)
+        debug_info['swing_enabled'] = bool(enable_swing)
+        debug_info['hot_enabled'] = bool(enable_hot)
+        debug_info['knowledge_enabled'] = bool(knowledge_scores)
+        debug_info['exclude_post_ids_count'] = len(excluded_ids)
+        debug_info['result_count_after_filter'] = len(final_results)
+        debug_info['route_samples'] = {
+            'cf': self._build_route_samples(cf_scores, final_post_ids, post_cache),
+            'swing': self._build_route_samples(swing_scores, final_post_ids, post_cache),
+            'graph': self._build_route_samples(graph_scores, final_post_ids, post_cache),
+            'semantic': self._build_route_samples(semantic_scores, final_post_ids, post_cache),
+            'knowledge': self._build_route_samples(knowledge_scores, final_post_ids, post_cache),
+            'hot': self._build_route_samples(hot_scores, final_post_ids, post_cache),
+        }
+        debug_info['final_preview'] = self._build_result_preview(final_results, post_cache)
+
+        return final_results, debug_info
+
+    # ══════════════════════════════════════════════════
+    #  加权融合流水线
+    # ══════════════════════════════════════════════════
+
+    def _legacy_fusion_pipeline(self, user_id, results_map, top_n, excluded_ids,
+                                request_context, weights, enable_exploration, enable_swing):
+        """加权线性融合 → 后处理逻辑。"""
+        cf_scores = results_map['cf']
+        swing_scores = results_map['swing']
+        graph_scores = results_map['graph']
+        semantic_scores = results_map['semantic']
+        hot_scores = results_map['hot']
+        knowledge_scores = results_map['knowledge']
+
+        resolved_weights, debug_info = self._resolve_weights(
+            user_id, cf_scores, swing_scores, graph_scores,
+            semantic_scores, knowledge_scores, hot_scores,
+            requested_weights=weights,
+        )
+
         buffer_n = max(
             (top_n + len(excluded_ids)) * DIVERSITY_BUFFER_MULTIPLIER,
             top_n * DIVERSITY_BUFFER_MULTIPLIER,
             top_n,
         )
         results = self.fusion.fuse_with_details(
-            cf_scores,
-            swing_scores,
-            graph_scores,
-            semantic_scores,
-            knowledge_scores,
-            hot_scores,
-            buffer_n,
-            weights=resolved_weights,
+            cf_scores, swing_scores, graph_scores,
+            semantic_scores, knowledge_scores, hot_scores,
+            buffer_n, weights=resolved_weights,
         )
+
+        all_post_ids = {item['post_id'] for item in results}
+        for scores in (cf_scores, swing_scores, graph_scores, semantic_scores, knowledge_scores, hot_scores):
+            for pid in sorted(scores, key=scores.get, reverse=True)[:5]:
+                all_post_ids.add(pid)
+        post_cache = _batch_load_posts(all_post_ids)
+
         resolved_context = self._resolve_context(user_id, request_context)
-        context_results = self._apply_context_bonus(results, resolved_context)
-        filtered_results = self._apply_negative_feedback(user_id, context_results, buffer_n)
+        context_results = self._apply_context_bonus(results, resolved_context, post_cache)
+        filtered_results = self._apply_negative_feedback(user_id, context_results, buffer_n, post_cache)
         unseen_results = self._exclude_seen_posts(filtered_results, excluded_ids)
-        logic_adjusted_results = self.logic.apply(user_id, unseen_results)
+        logic_adjusted_results = self.logic.apply(user_id, unseen_results, post_cache=post_cache)
         diversified_results = self._apply_diversity_window(
-            logic_adjusted_results,
-            top_n,
-            debug_info.get('user_stage', 'unknown'),
+            logic_adjusted_results, top_n,
+            debug_info.get('user_stage', 'unknown'), post_cache,
         )
         if enable_exploration:
             final_results = self._apply_exploration(user_id, diversified_results, unseen_results, top_n)
         else:
             final_results = diversified_results[:top_n]
-        final_post_ids = {item['post_id'] for item in final_results}
+
         debug_info['negative_feedback_applied'] = True
         debug_info['diversity_applied'] = True
         debug_info['diversity_limits'] = self._get_diversity_limits(debug_info.get('user_stage', 'unknown'))
-        debug_info['exploration_enabled'] = bool(enable_exploration)
-        debug_info['swing_enabled'] = bool(enable_swing)
-        debug_info['hot_enabled'] = bool(enable_hot)
-        debug_info['knowledge_enabled'] = bool(knowledge_scores)
         debug_info['context'] = resolved_context
         debug_info['context_enabled'] = bool(resolved_context.get('region_code') or resolved_context.get('time_slot'))
-        debug_info['exclude_post_ids_count'] = len(excluded_ids)
         debug_info['result_count_before_filter'] = len(results)
         debug_info['result_count_after_negative_filter'] = len(filtered_results)
         debug_info['result_count_after_exclude_seen'] = len(unseen_results)
         debug_info['result_count_after_logic'] = len(logic_adjusted_results)
         debug_info['result_count_after_diversity'] = len(diversified_results)
-        debug_info['result_count_after_filter'] = len(final_results)
-        debug_info['route_samples'] = {
-            'cf': self._build_route_samples(cf_scores, final_post_ids),
-            'swing': self._build_route_samples(swing_scores, final_post_ids),
-            'graph': self._build_route_samples(graph_scores, final_post_ids),
-            'semantic': self._build_route_samples(semantic_scores, final_post_ids),
-            'knowledge': self._build_route_samples(knowledge_scores, final_post_ids),
-            'hot': self._build_route_samples(hot_scores, final_post_ids),
-        }
-        debug_info['fusion_preview'] = self._build_result_preview(results)
-        debug_info['logic_preview'] = self._build_result_preview(logic_adjusted_results)
-        debug_info['diversity_preview'] = self._build_result_preview(diversified_results)
-        debug_info['final_preview'] = self._build_result_preview(final_results)
+        debug_info['fusion_preview'] = self._build_result_preview(results, post_cache)
+        debug_info['logic_preview'] = self._build_result_preview(logic_adjusted_results, post_cache)
+        debug_info['diversity_preview'] = self._build_result_preview(diversified_results, post_cache)
+
         return final_results, debug_info
 
-    def precompute(self):
-        """离线预计算（物品相似度矩阵等）"""
-        print("开始预计算...")
-        self.cf.precompute_item_similarity()
-        self.swing.precompute_item_similarity()
-        print("预计算完成")
+    # ══════════════════════════════════════════════════
+    #  GBDT 精排流水线
+    # ══════════════════════════════════════════════════
 
-    def _apply_negative_feedback(self, user_id, results, top_n):
-        """对明确点过“不感兴趣”的内容做过滤和相似内容降权。"""
-        blocked_author_ids = get_blocked_author_ids(user_id)
-        blocked_domain_ids = get_blocked_domain_ids(user_id)
-        stmt = db.select(UserBehavior).filter_by(
-            user_id=user_id,
-            behavior_type='dislike',
+    def _gbdt_ranking_pipeline(self, user_id, results_map, top_n, excluded_ids,
+                               request_context, enable_exploration):
+        """GBDT 精排 → 后处理逻辑。"""
+        cf_scores = results_map['cf']
+        swing_scores = results_map['swing']
+        graph_scores = results_map['graph']
+        semantic_scores = results_map['semantic']
+        hot_scores = results_map['hot']
+        knowledge_scores = results_map['knowledge']
+
+        # 每路取 top-K 候选再合并（避免候选池过大导致精排失效）
+        RECALL_TOP_K = 50
+        all_candidate_ids = set()
+        for scores in (cf_scores, swing_scores, graph_scores, semantic_scores, knowledge_scores, hot_scores):
+            top_ids = sorted(scores, key=scores.get, reverse=True)[:RECALL_TOP_K]
+            all_candidate_ids.update(top_ids)
+        if not all_candidate_ids:
+            return [], {'ranking_method': 'gbdt', 'user_stage': self._get_user_stage(user_id)}
+
+        buffer_n = max(
+            (top_n + len(excluded_ids)) * DIVERSITY_BUFFER_MULTIPLIER,
+            top_n * DIVERSITY_BUFFER_MULTIPLIER,
+            top_n,
         )
-        disliked_behaviors = db.session.scalars(stmt).all()
-        if not disliked_behaviors and not blocked_author_ids and not blocked_domain_ids:
-            return results[:top_n]
-        if not disliked_behaviors:
-            filtered = []
-            for item in results:
-                post = db.session.get(Post, item['post_id'])
-                if not post:
-                    continue
-                if post.author_id in blocked_author_ids or post.domain_id in blocked_domain_ids:
-                    continue
-                filtered.append(item)
-            return filtered[:top_n]
 
-        stmt = db.select(Post).filter(Post.id.in_([behavior.post_id for behavior in disliked_behaviors]))
-        disliked_posts = db.session.scalars(stmt).all()
-        disliked_post_ids = {post.id for post in disliked_posts}
-        disliked_author_ids = {post.author_id for post in disliked_posts}
-        disliked_domain_ids = {post.domain_id for post in disliked_posts}
-        disliked_tag_names = {
-            tag.name
-            for post in disliked_posts
-            for tag in post.tags
+        post_ids = list(all_candidate_ids)
+        post_cache = _batch_load_posts(post_ids)
+
+        # 构建 recall_scores dict: {post_id: {'cf': x, 'swing': x, ...}}
+        recall_scores = {}
+        for pid in post_ids:
+            recall_scores[pid] = {
+                'cf': cf_scores.get(pid, 0.0),
+                'swing': swing_scores.get(pid, 0.0),
+                'graph': graph_scores.get(pid, 0.0),
+                'semantic': semantic_scores.get(pid, 0.0),
+                'knowledge': knowledge_scores.get(pid, 0.0),
+                'hot': hot_scores.get(pid, 0.0),
+            }
+
+        # 特征提取
+        resolved_context = self._resolve_context(user_id, request_context)
+        self.feature_extractor.warm_user_cache(user_id, logic_engine=self.logic)
+        features = self.feature_extractor.extract_batch(
+            user_id, post_ids, recall_scores, resolved_context, post_cache,
+        )
+
+        # GBDT 预测
+        gbdt_probs = self.ranker.predict(features)
+
+        # 构建结果列表（与 fusion 格式兼容）
+        results = []
+        for i, pid in enumerate(post_ids):
+            rs = recall_scores[pid]
+            results.append({
+                'post_id': pid,
+                'final_score': round(gbdt_probs[i], 4),
+                'gbdt_score': round(gbdt_probs[i], 4),
+                'cf_score': round(rs['cf'], 4),
+                'swing_score': round(rs['swing'], 4),
+                'graph_score': round(rs['graph'], 4),
+                'semantic_score': round(rs['semantic'], 4),
+                'knowledge_score': round(rs['knowledge'], 4),
+                'hot_score': round(rs['hot'], 4),
+            })
+        results.sort(key=lambda r: -r['final_score'])
+        results = results[:buffer_n]
+
+        # 后处理（不调用 context_bonus，因为特征 13/14 已编码上下文）
+        filtered_results = self._apply_negative_feedback(user_id, results, buffer_n, post_cache)
+        unseen_results = self._exclude_seen_posts(filtered_results, excluded_ids)
+        logic_adjusted_results = self.logic.apply(user_id, unseen_results, post_cache=post_cache)
+        stage = self._get_user_stage(user_id)
+        diversified_results = self._apply_diversity_window(
+            logic_adjusted_results, top_n, stage, post_cache,
+        )
+        if enable_exploration:
+            final_results = self._apply_exploration(user_id, diversified_results, unseen_results, top_n)
+        else:
+            final_results = diversified_results[:top_n]
+
+        self.feature_extractor.clear_cache()
+
+        debug_info = {
+            'ranking_method': 'gbdt',
+            'user_stage': stage,
+            'negative_feedback_applied': True,
+            'diversity_applied': True,
+            'diversity_limits': self._get_diversity_limits(stage),
+            'context': resolved_context,
+            'context_enabled': bool(resolved_context.get('region_code') or resolved_context.get('time_slot')),
+            'result_count_before_filter': len(results),
+            'result_count_after_negative_filter': len(filtered_results),
+            'result_count_after_exclude_seen': len(unseen_results),
+            'result_count_after_logic': len(logic_adjusted_results),
+            'result_count_after_diversity': len(diversified_results),
+            'route_counts': {
+                'cf': len(cf_scores), 'swing': len(swing_scores),
+                'graph': len(graph_scores), 'semantic': len(semantic_scores),
+                'knowledge': len(knowledge_scores), 'hot': len(hot_scores),
+            },
         }
 
-        rescored_results = []
+        return final_results, debug_info
+
+    def _parallel_recall(self, user_id, enable_llm=True, enable_hot=True, enable_swing=True):
+        """6 路并行召回，返回 {name: {post_id: score}}。"""
+        app = current_app._get_current_object()
+
+        # ── 黑名单前置：一次性加载，传递给各召回引擎 ──
+        blocked_author_ids = get_blocked_author_ids(user_id)
+        blocked_domain_ids = get_blocked_domain_ids(user_id)
+        exclude_post_ids = set()
+        if blocked_author_ids or blocked_domain_ids:
+            stmt = db.select(Post.id)
+            conditions = []
+            if blocked_author_ids:
+                conditions.append(Post.author_id.in_(blocked_author_ids))
+            if blocked_domain_ids:
+                conditions.append(Post.domain_id.in_(blocked_domain_ids))
+            from sqlalchemy import or_
+            stmt = stmt.filter(or_(*conditions))
+            exclude_post_ids = set(db.session.scalars(stmt).all())
+        self._last_exclude_post_ids = exclude_post_ids
+
+        pipelines = {
+            'cf':        lambda: self.cf.recommend(user_id, exclude_post_ids=exclude_post_ids),
+            'swing':     lambda: self.swing.recommend(user_id, exclude_post_ids=exclude_post_ids) if enable_swing else {},
+            'graph':     lambda: self.graph.recommend(user_id, exclude_post_ids=exclude_post_ids),
+            'semantic':  lambda: self.semantic.recommend(user_id, enable_llm_rerank=enable_llm, exclude_post_ids=exclude_post_ids),
+            'hot':       lambda: self.hot.recommend(
+                user_id, exclude_post_ids=exclude_post_ids,
+                exclude_author_ids=blocked_author_ids, exclude_domain_ids=blocked_domain_ids,
+            ) if enable_hot else {},
+            'knowledge': lambda: self.logic.recall(user_id, exclude_post_ids=exclude_post_ids),
+        }
+        results_map = {}
+        recall_stats = {}
+        recall_start = time.perf_counter()
+        future_to_name = {
+            self._executor.submit(self._run_pipeline_timed, fn, app): name
+            for name, fn in pipelines.items()
+        }
+        for future in as_completed(future_to_name):
+            name = future_to_name[future]
+            try:
+                scores, elapsed_ms = future.result()
+                results_map[name] = scores
+                recall_stats[name] = {
+                    'count': len(scores),
+                    'latency_ms': elapsed_ms,
+                }
+            except Exception as e:
+                logger.warning("Pipeline %s failed: %s", name, e)
+                results_map[name] = {}
+                recall_stats[name] = {'count': 0, 'latency_ms': -1, 'error': str(e)}
+        total_ms = round((time.perf_counter() - recall_start) * 1000, 1)
+        slowest = max(recall_stats.items(), key=lambda x: x[1].get('latency_ms', 0))
+        logger.info(
+            "Recall done for user=%s total=%.1fms | %s | slowest=%s(%.1fms)",
+            user_id, total_ms,
+            " ".join(f"{n}={s['count']}/{s['latency_ms']:.0f}ms" for n, s in recall_stats.items()),
+            slowest[0], slowest[1].get('latency_ms', 0),
+        )
+        self._last_recall_stats = recall_stats
+        return results_map
+
+    def precompute(self):
+        """离线预计算（物品相似度矩阵等），可由定时任务或手动触发。"""
+        logger.info("开始预计算 CF + Swing 相似度矩阵...")
+        self.cf.precompute_item_similarity()
+        self.swing.precompute_item_similarity()
+        logger.info("预计算完成")
+
+    @staticmethod
+    def _run_pipeline_timed(fn, app):
+        with app.app_context():
+            t0 = time.perf_counter()
+            result = fn()
+            elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+            return result, elapsed_ms
+
+    # ── 后处理方法 ──
+
+    def _apply_negative_feedback(self, user_id, results, top_n, post_cache):
+        # 黑名单过滤已前置到召回层，这里只处理 dislike 降权
+        stmt = db.select(UserBehavior).filter_by(
+            user_id=user_id, behavior_type='dislike',
+        )
+        disliked_behaviors = db.session.scalars(stmt).all()
+        if not disliked_behaviors:
+            return results[:top_n]
+
+        stmt = db.select(Post).filter(Post.id.in_([b.post_id for b in disliked_behaviors]))
+        disliked_posts = db.session.scalars(stmt).all()
+        disliked_post_ids = {p.id for p in disliked_posts}
+        disliked_author_ids = {p.author_id for p in disliked_posts}
+        disliked_domain_ids = {p.domain_id for p in disliked_posts}
+        disliked_tag_names = {tag.name for p in disliked_posts for tag in p.tags}
+
+        rescored = []
         for item in results:
             if item['post_id'] in disliked_post_ids:
                 continue
-
-            post = db.session.get(Post, item['post_id'])
+            post = post_cache.get(item['post_id']) or db.session.get(Post, item['post_id'])
             if not post:
                 continue
-            if post.author_id in blocked_author_ids or post.domain_id in blocked_domain_ids:
-                continue
-
             penalty = 0.0
             if post.author_id in disliked_author_ids:
                 penalty += 0.2
             if post.domain_id in disliked_domain_ids:
                 penalty += 0.12
-
             overlap_count = sum(1 for tag in post.tags if tag.name in disliked_tag_names)
             penalty += min(overlap_count * 0.06, 0.18)
-
-            updated_item = dict(item)
-            updated_item['negative_penalty'] = round(penalty, 4)
-            updated_item['final_score'] = round(max(item['final_score'] - penalty, 0.0), 4)
-            rescored_results.append(updated_item)
-
-        rescored_results.sort(key=lambda result: -result['final_score'])
-        return rescored_results[:top_n]
+            updated = dict(item)
+            updated['negative_penalty'] = round(penalty, 4)
+            updated['final_score'] = round(max(item['final_score'] - penalty, 0.0), 4)
+            rescored.append(updated)
+        rescored.sort(key=lambda r: -r['final_score'])
+        return rescored[:top_n]
 
     def _exclude_seen_posts(self, results, exclude_post_ids):
         if not exclude_post_ids:
             return results
-        return [
-            item
-            for item in results
-            if item['post_id'] not in exclude_post_ids
-        ]
+        return [item for item in results if item['post_id'] not in exclude_post_ids]
 
-    def _apply_diversity_window(self, results, top_n, user_stage):
+    def _apply_diversity_window(self, results, top_n, user_stage, post_cache):
         if not results:
             return []
-
         limits = self._get_diversity_limits(user_stage)
         selected = []
         deferred = []
         author_counts = {}
         domain_counts = {}
-
+        tag_counts = {}
         for item in results:
-            post = db.session.get(Post, item['post_id'])
+            post = post_cache.get(item['post_id']) or db.session.get(Post, item['post_id'])
             if not post:
                 continue
-
-            author_count = author_counts.get(post.author_id, 0)
-            domain_count = domain_counts.get(post.domain_id, 0)
-            if author_count >= limits['author'] or domain_count >= limits['domain']:
+            ac = author_counts.get(post.author_id, 0)
+            dc = domain_counts.get(post.domain_id, 0)
+            # 检查 tag 维度：帖子的主标签（第一个）是否已出现过多
+            primary_tag = post.tags[0].name if post.tags else None
+            tc = tag_counts.get(primary_tag, 0) if primary_tag else 0
+            if ac >= limits['author'] or dc >= limits['domain'] or (primary_tag and tc >= limits['tag']):
                 deferred.append((item, post))
                 continue
-
             picked = dict(item)
             picked['diversity_kept'] = True
             selected.append(picked)
-            author_counts[post.author_id] = author_count + 1
-            domain_counts[post.domain_id] = domain_count + 1
+            author_counts[post.author_id] = ac + 1
+            domain_counts[post.domain_id] = dc + 1
+            if primary_tag:
+                tag_counts[primary_tag] = tc + 1
             if len(selected) >= top_n:
                 return selected
-
         for item, _post in deferred:
             if len(selected) >= top_n:
                 break
-            fallback_item = dict(item)
-            fallback_item['diversity_fallback'] = True
-            selected.append(fallback_item)
-
+            fallback = dict(item)
+            fallback['diversity_fallback'] = True
+            selected.append(fallback)
         return selected[:top_n]
 
     def _get_diversity_limits(self, user_stage):
         if user_stage == 'cold':
-            return {
-                'author': COLD_MAX_SAME_AUTHOR,
-                'domain': COLD_MAX_SAME_DOMAIN,
-            }
-        return {
-            'author': MAX_SAME_AUTHOR,
-            'domain': MAX_SAME_DOMAIN,
-        }
+            return {'author': 3, 'domain': 6, 'tag': 5}
+        return {'author': 2, 'domain': 3, 'tag': 4}
 
     def _apply_exploration(self, user_id, selected_results, ranked_results, top_n):
         if not selected_results:
             return []
-
-        selected_ids = {selected['post_id'] for selected in selected_results}
-        exploration_pool = [
+        selected_ids = {s['post_id'] for s in selected_results}
+        pool = [
             dict(item)
             for item in ranked_results[top_n: top_n * EXPLORATION_POOL_MULTIPLIER]
             if item['post_id'] not in selected_ids
         ]
-        if not exploration_pool:
+        if not pool:
             return selected_results[:top_n]
-
-        rng = random.Random(user_id * 9973 + top_n * 131)
-        if rng.random() >= EXPLORATION_EPSILON:
+        # 种子加入日期，使每天探索内容不同
+        day_seed = date.today().toordinal()
+        rng = random.Random(user_id * 9973 + top_n * 131 + day_seed)
+        if rng.random() >= 0.10:
             return selected_results[:top_n]
-
-        insert_count = 1 if top_n < 12 else EXPLORATION_MAX_INSERTS
-        insert_count = min(insert_count, len(exploration_pool), len(selected_results))
-        insertion_positions = list(range(max(top_n // 2, 1), len(selected_results)))
-        if not insertion_positions:
+        insert_count = 1 if top_n < 12 else 2
+        insert_count = min(insert_count, len(pool), len(selected_results))
+        positions = list(range(max(top_n // 2, 1), len(selected_results)))
+        if not positions:
             return selected_results[:top_n]
-
-        rng.shuffle(exploration_pool)
-        rng.shuffle(insertion_positions)
-        final_results = [dict(item) for item in selected_results[:top_n]]
-
+        rng.shuffle(pool)
+        rng.shuffle(positions)
+        final = [dict(item) for item in selected_results[:top_n]]
         for idx in range(insert_count):
-            position = insertion_positions[idx]
-            exploration_item = dict(exploration_pool[idx])
-            exploration_item['is_exploration'] = True
-            exploration_item['exploration_source_rank'] = ranked_results.index(exploration_pool[idx]) + 1
-            final_results[position] = exploration_item
-
-        return final_results[:top_n]
+            pos = positions[idx]
+            explore_item = dict(pool[idx])
+            explore_item['is_exploration'] = True
+            final[pos] = explore_item
+        return final[:top_n]
 
     def _resolve_context(self, user_id, request_context=None):
         from app.models.user import User
-
         user = db.session.get(User, user_id)
         return resolve_effective_context(user=user, request_context=request_context)
 
-    def _apply_context_bonus(self, results, context):
+    def _apply_context_bonus(self, results, context, post_cache):
         if not results:
             return results
-
         if not context.get('region_code') and not context.get('time_slot'):
             return results
-
-        rescored_results = []
+        rescored = []
         for item in results:
-            post = db.session.get(Post, item['post_id'])
+            post = post_cache.get(item['post_id']) or db.session.get(Post, item['post_id'])
             if not post:
                 continue
-
             bonus, matches = compute_post_context_bonus(post, context)
-            updated_item = dict(item)
-            updated_item['context_score'] = round(bonus, 4)
-            updated_item['context_region_match'] = matches['region_match']
-            updated_item['context_time_slot_match'] = matches['time_slot_match']
-            updated_item['final_score'] = round(item['final_score'] + bonus, 4)
-            rescored_results.append(updated_item)
+            updated = dict(item)
+            updated['context_score'] = round(bonus, 4)
+            updated['context_region_match'] = matches['region_match']
+            updated['context_time_slot_match'] = matches['time_slot_match']
+            updated['final_score'] = round(item['final_score'] + bonus, 4)
+            rescored.append(updated)
+        rescored.sort(key=lambda r: -r['final_score'])
+        return rescored
 
-        rescored_results.sort(key=lambda result: -result['final_score'])
-        return rescored_results
-
-    def _resolve_weights(self, user_id, cf_scores, swing_scores, graph_scores, semantic_scores, knowledge_scores, hot_scores, requested_weights=None):
+    def _resolve_weights(self, user_id, cf_scores, swing_scores, graph_scores,
+                         semantic_scores, knowledge_scores, hot_scores, requested_weights=None):
         stage = self._get_user_stage(user_id)
         if requested_weights:
-            hot_weight = USER_STAGE_WEIGHTS[stage].get('hot', 0.0)
-            knowledge_weight = USER_STAGE_WEIGHTS[stage].get('knowledge', 0.0)
-            normalized_requested = self.fusion._normalize_weights({
-                'cf': requested_weights.get('cf', 0.0),
-                'swing': requested_weights.get('swing', 0.0),
-                'graph': requested_weights.get('graph', 0.0),
-                'semantic': requested_weights.get('semantic', 0.0),
-            })
-            remaining_weight = max(1.0 - hot_weight - knowledge_weight, 0.0)
-            base_weights = {
-                'cf': normalized_requested['cf'] * remaining_weight,
-                'swing': normalized_requested['swing'] * remaining_weight,
-                'graph': normalized_requested['graph'] * remaining_weight,
-                'semantic': normalized_requested['semantic'] * remaining_weight,
-                'knowledge': knowledge_weight,
-                'hot': hot_weight,
-            }
+            all_keys = {'cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot'}
+            if all_keys <= set(requested_weights.keys()):
+                # 消融实验：全部 6 路权重由调用方指定，直接使用
+                base_weights = {k: requested_weights[k] for k in all_keys}
+            else:
+                # 前端调权：只传 cf/swing/graph/semantic，knowledge/hot 用阶段默认
+                hot_weight = USER_STAGE_WEIGHTS[stage].get('hot', 0.0)
+                knowledge_weight = USER_STAGE_WEIGHTS[stage].get('knowledge', 0.0)
+                normalized_requested = self.fusion._normalize_weights({
+                    'cf': requested_weights.get('cf', 0.0),
+                    'swing': requested_weights.get('swing', 0.0),
+                    'graph': requested_weights.get('graph', 0.0),
+                    'semantic': requested_weights.get('semantic', 0.0),
+                })
+                remaining_weight = max(1.0 - hot_weight - knowledge_weight, 0.0)
+                base_weights = {
+                    'cf': normalized_requested['cf'] * remaining_weight,
+                    'swing': normalized_requested['swing'] * remaining_weight,
+                    'graph': normalized_requested['graph'] * remaining_weight,
+                    'semantic': normalized_requested['semantic'] * remaining_weight,
+                    'knowledge': knowledge_weight,
+                    'hot': hot_weight,
+                }
         else:
             base_weights = dict(USER_STAGE_WEIGHTS[stage])
             if swing_scores:
                 base_weights['swing'] *= self._estimate_swing_weight_factor(swing_scores)
         normalized = self.fusion._normalize_weights(base_weights)
         availability = {
-            'cf': bool(cf_scores),
-            'swing': bool(swing_scores),
-            'graph': bool(graph_scores),
-            'semantic': bool(semantic_scores),
-            'knowledge': bool(knowledge_scores),
-            'hot': bool(hot_scores),
+            'cf': bool(cf_scores), 'swing': bool(swing_scores),
+            'graph': bool(graph_scores), 'semantic': bool(semantic_scores),
+            'knowledge': bool(knowledge_scores), 'hot': bool(hot_scores),
         }
-
-        available_names = [name for name, available in availability.items() if available]
+        available_names = [name for name, avail in availability.items() if avail]
         if not available_names:
             return normalized, {
                 'user_stage': stage,
                 'weights_base': normalized,
                 'weights_used': normalized,
                 'route_availability': availability,
-                'route_counts': {
-                    'cf': len(cf_scores),
-                    'swing': len(swing_scores),
-                    'graph': len(graph_scores),
-                    'semantic': len(semantic_scores),
-                    'knowledge': len(knowledge_scores),
-                    'hot': len(hot_scores),
-                },
+                'route_counts': {n: len(s) for n, s in zip(
+                    ['cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot'],
+                    [cf_scores, swing_scores, graph_scores, semantic_scores, knowledge_scores, hot_scores])},
             }
-
-        redistributed_total = sum(
-            normalized[name]
-            for name, available in availability.items()
-            if not available
-        )
-        available_total = sum(normalized[name] for name in available_names)
-
+        redistributed_total = sum(normalized[n] for n, a in availability.items() if not a)
+        available_total = sum(normalized[n] for n in available_names)
         if available_total <= 0:
-            even_weight = 1.0 / len(available_names)
-            used_weights = {
-                name: (even_weight if name in available_names else 0.0)
-                for name in normalized
-            }
+            even = 1.0 / len(available_names)
+            used_weights = {n: (even if n in available_names else 0.0) for n in normalized}
         else:
             used_weights = {}
-            for name in normalized:
-                if not availability[name]:
-                    used_weights[name] = 0.0
-                    continue
-                share = normalized[name] / available_total
-                used_weights[name] = normalized[name] + redistributed_total * share
-
+            for n in normalized:
+                if not availability[n]:
+                    used_weights[n] = 0.0
+                else:
+                    share = normalized[n] / available_total
+                    used_weights[n] = normalized[n] + redistributed_total * share
         used_weights = self.fusion._normalize_weights(used_weights)
         debug_info = {
             'user_stage': stage,
-            'weights_base': {name: round(value, 4) for name, value in normalized.items()},
-            'weights_used': {name: round(value, 4) for name, value in used_weights.items()},
+            'weights_base': {n: round(v, 4) for n, v in normalized.items()},
+            'weights_used': {n: round(v, 4) for n, v in used_weights.items()},
             'route_availability': availability,
             'route_counts': {
-                'cf': len(cf_scores),
-                'swing': len(swing_scores),
-                'graph': len(graph_scores),
-                'semantic': len(semantic_scores),
-                'knowledge': len(knowledge_scores),
-                'hot': len(hot_scores),
+                'cf': len(cf_scores), 'swing': len(swing_scores),
+                'graph': len(graph_scores), 'semantic': len(semantic_scores),
+                'knowledge': len(knowledge_scores), 'hot': len(hot_scores),
             },
         }
         return used_weights, debug_info
@@ -473,40 +715,36 @@ class RecommendationEngine:
     def _estimate_swing_weight_factor(self, swing_scores):
         if not swing_scores:
             return 0.0
-
+        BASELINE = 0.6
         top_scores = sorted(swing_scores.values(), reverse=True)[:10]
         avg_score = sum(top_scores) / len(top_scores)
         coverage = min(len(swing_scores) / 80.0, 1.0)
-        confidence = avg_score * coverage
-        return max(0.2, min(confidence, 1.0))
+        raw = avg_score * coverage
+        # 用 baseline 平滑：80% baseline + 20% 数据驱动，避免波动过大
+        return max(0.3, min(BASELINE * 0.8 + raw * 0.2, 1.0))
 
-    def _build_route_samples(self, scores, selected_post_ids, limit=5):
+    def _build_route_samples(self, scores, selected_post_ids, post_cache, limit=5):
         ranked = sorted(scores.items(), key=lambda item: -item[1])[:limit]
         samples = []
         for post_id, score in ranked:
-            post = db.session.get(Post, post_id)
+            post = post_cache.get(post_id) or db.session.get(Post, post_id)
             if not post:
                 continue
             samples.append({
-                'post_id': post.id,
-                'title': post.title,
-                'summary': post.summary,
-                'domain_id': post.domain_id,
-                'author_id': post.author_id,
-                'score': round(score, 4),
-                'selected': post.id in selected_post_ids,
+                'post_id': post.id, 'title': post.title, 'summary': post.summary,
+                'domain_id': post.domain_id, 'author_id': post.author_id,
+                'score': round(score, 4), 'selected': post.id in selected_post_ids,
             })
         return samples
 
-    def _build_result_preview(self, items, limit=10):
+    def _build_result_preview(self, items, post_cache, limit=10):
         preview = []
         for item in items[:limit]:
-            post = db.session.get(Post, item['post_id'])
+            post = post_cache.get(item['post_id']) or db.session.get(Post, item['post_id'])
             if not post:
                 continue
             preview.append({
-                'post_id': post.id,
-                'title': post.title,
+                'post_id': post.id, 'title': post.title,
                 'final_score': round(item.get('final_score', 0.0), 4),
                 'cf_score': round(item.get('cf_score', 0.0), 4),
                 'swing_score': round(item.get('swing_score', 0.0), 4),
@@ -525,16 +763,14 @@ class RecommendationEngine:
         return preview
 
     def _get_user_stage(self, user_id):
-        behavior_count = (
-            db.session.scalar(
-                db.select(db.func.count())
-                .select_from(UserBehavior)
-                .filter(
-                    UserBehavior.user_id == user_id,
-                    UserBehavior.behavior_type.in_(['browse', 'like', 'favorite', 'comment'])
-                )
+        behavior_count = db.session.scalar(
+            db.select(db.func.count())
+            .select_from(UserBehavior)
+            .filter(
+                UserBehavior.user_id == user_id,
+                UserBehavior.behavior_type.in_(['browse', 'like', 'favorite', 'comment']),
             )
-        )
+        ) or 0
         if behavior_count == 0:
             return 'cold'
         if behavior_count < 15:

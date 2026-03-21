@@ -61,11 +61,12 @@ class CFEngine:
 
         print(f"  物品相似度计算完成，共 {count} 个物品")
 
-    def recommend(self, user_id, candidate_ids=None, top_n=200):
+    def recommend(self, user_id, candidate_ids=None, top_n=200, exclude_post_ids=None):
         """
         在线推荐：为用户生成 CF 得分
         返回 {post_id: normalized_score}
         """
+        exclude_post_ids = exclude_post_ids or set()
         stmt = db.select(UserBehavior).filter_by(user_id=user_id)
         behaviors = db.session.scalars(stmt).all()
         if not behaviors:
@@ -77,6 +78,7 @@ class CFEngine:
             user_ratings[b.post_id] = max(user_ratings.get(b.post_id, 0), score)
 
         interacted = set(user_ratings.keys())
+        skip = interacted | exclude_post_ids
         scores = defaultdict(float)
         cache_hits = 0
 
@@ -89,7 +91,7 @@ class CFEngine:
                 cache_hits += 1
             for sim_item_str, sim_score in similar:
                 sim_item = int(sim_item_str)
-                if sim_item in interacted:
+                if sim_item in skip:
                     continue
                 if candidate_ids and sim_item not in candidate_ids:
                     continue
@@ -100,7 +102,7 @@ class CFEngine:
 
         # Redis 中还没有离线相似度缓存时，回退到在线共现计算，避免 CF 分支长期为 0
         if cache_hits == 0:
-            return self._recommend_online(user_ratings, candidate_ids, top_n)
+            return self._recommend_online(user_ratings, candidate_ids, top_n, exclude_post_ids)
 
         return min_max_normalize(dict(scores))
 
@@ -128,16 +130,18 @@ class CFEngine:
 
         return user_items, item_users
 
-    def _recommend_online(self, user_ratings, candidate_ids=None, top_n=200):
+    def _recommend_online(self, user_ratings, candidate_ids=None, top_n=200, exclude_post_ids=None):
+        exclude_post_ids = exclude_post_ids or set()
         behaviors = db.session.scalars(db.select(UserBehavior)).all()
         user_items, item_users = self._build_interaction_matrices(behaviors)
 
         interacted = set(user_ratings.keys())
+        skip = interacted | exclude_post_ids
         scores = defaultdict(float)
 
         for item_id, rating in user_ratings.items():
             for other_item_id, other_users in item_users.items():
-                if other_item_id == item_id or other_item_id in interacted:
+                if other_item_id == item_id or other_item_id in skip:
                     continue
                 if candidate_ids and other_item_id not in candidate_ids:
                     continue

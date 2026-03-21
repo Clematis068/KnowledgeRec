@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文章预览 - KnowledgeRec</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+  :root {
+    --kr-text: #1a1a2e;
+    --kr-text-soft: #3d3d5c;
+    --kr-text-muted: #8888a0;
+    --kr-primary: #7c3aed;
+    --kr-border: #e8e8ec;
+    --kr-surface: #fff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #fafafa;
+    color: var(--kr-text);
+  }
+  .page { max-width: 1120px; margin: 0 auto; padding: 40px 24px; }
+  .article-shell { display: grid; gap: 28px; }
+
+  /* 标题区 */
+  .article-kicker {
+    display: inline-flex; width: fit-content;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--kr-text-muted);
+  }
+  .article-title {
+    font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800;
+    line-height: 1.06; letter-spacing: -0.05em;
+  }
+  .article-deck {
+    max-width: 780px; color: var(--kr-text-soft);
+    font-size: 1.18rem; line-height: 1.6;
+  }
+  .article-meta { display: flex; gap: 14px; color: var(--kr-text-muted); font-size: 13px; }
+  .article-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tag-chip {
+    display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px;
+    border-radius: 999px; border: 1px solid var(--kr-border);
+    font-size: 12px; font-weight: 600; color: var(--kr-text-soft);
+  }
+
+  /* 双栏布局 */
+  .article-layout {
+    display: grid; grid-template-columns: 240px minmax(0, 1fr);
+    gap: 44px; align-items: start;
+  }
+  .article-sidebar { position: sticky; top: 24px; display: grid; gap: 18px; }
+  .sidebar-block { padding-top: 18px; border-top: 1px solid var(--kr-border); }
+  .sidebar-kicker, .content-kicker {
+    display: inline-flex; margin-bottom: 14px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--kr-text-muted);
+  }
+  .sidebar-text { color: var(--kr-text-soft); line-height: 1.95; }
+  .sidebar-list { list-style: none; display: grid; gap: 10px; margin-top: 10px; }
+  .sidebar-item { position: relative; padding-left: 18px; color: var(--kr-text-soft); line-height: 1.95; }
+  .sidebar-item::before {
+    content: ''; position: absolute; left: 0; top: 0.78em;
+    width: 6px; height: 6px; border-radius: 999px; background: var(--kr-primary);
+  }
+  .article-content { max-width: 760px; }
+  .content-block { padding-top: 18px; border-top: 1px solid var(--kr-border); }
+  .content-body { margin-top: 12px; }
+
+  /* ── Markdown 正文 ── */
+  .markdown-body h1, .markdown-body h2, .markdown-body h3,
+  .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+    margin: 1.6em 0 0.6em; font-weight: 700; line-height: 1.35; color: var(--kr-text);
+  }
+  .markdown-body h1 { font-size: 1.65rem; }
+  .markdown-body h2 { font-size: 1.4rem; border-bottom: 1px solid var(--kr-border); padding-bottom: 0.3em; }
+  .markdown-body h3 { font-size: 1.2rem; }
+  .markdown-body h4 { font-size: 1.08rem; }
+  .markdown-body p {
+    margin-bottom: 1.25em; font-size: 1.02rem; line-height: 1.95;
+    color: var(--kr-text-soft); word-break: break-word;
+  }
+  .markdown-body img {
+    max-width: 100%; height: auto; border-radius: 6px; margin: 4px 0;
+  }
+  .markdown-body .article-figure { margin: 1.2em 0; text-align: center; }
+  .markdown-body .article-figure figcaption {
+    margin-top: 8px; font-size: 0.88rem; color: var(--kr-text-muted);
+  }
+  .markdown-body blockquote {
+    margin: 1.2em 0; padding: 0.8em 1.2em;
+    border-left: 3px solid var(--kr-primary);
+    background: rgba(0,0,0,0.02); color: var(--kr-text-soft);
+    border-radius: 0 6px 6px 0;
+  }
+  .markdown-body blockquote p:last-child { margin-bottom: 0; }
+  .markdown-body .code-block-wrapper {
+    position: relative; margin: 1.2em 0; border-radius: 8px;
+    overflow: hidden; border: 1px solid var(--kr-border);
+  }
+  .markdown-body .code-lang-label {
+    position: absolute; top: 0; right: 0; padding: 2px 10px;
+    font-size: 0.75rem; font-weight: 600; color: var(--kr-text-muted);
+    background: rgba(0,0,0,0.04); border-radius: 0 8px 0 6px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .markdown-body pre {
+    margin: 0; padding: 16px 20px; background: #f6f8fa;
+    overflow-x: auto; font-size: 0.88rem; line-height: 1.65;
+  }
+  .markdown-body code {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace; font-size: 0.88em;
+  }
+  .markdown-body :not(pre) > code {
+    padding: 0.15em 0.4em; border-radius: 4px;
+    background: rgba(0,0,0,0.06); color: #d63384; font-size: 0.85em;
+  }
+  .markdown-body ul, .markdown-body ol {
+    margin: 0.8em 0; padding-left: 1.8em; color: var(--kr-text-soft); line-height: 1.9;
+  }
+  .markdown-body li { margin-bottom: 0.3em; }
+  .markdown-body table {
+    width: 100%; margin: 1.2em 0; border-collapse: collapse; font-size: 0.95rem;
+  }
+  .markdown-body th, .markdown-body td {
+    padding: 10px 14px; border: 1px solid var(--kr-border); text-align: left;
+  }
+  .markdown-body th { background: rgba(0,0,0,0.03); font-weight: 600; }
+  .markdown-body hr { margin: 2em 0; border: none; border-top: 1px solid var(--kr-border); }
+  .markdown-body a { color: var(--kr-primary); text-decoration: none; }
+  .markdown-body a:hover { border-bottom: 1px solid var(--kr-primary); }
+  .markdown-body strong { font-weight: 700; color: var(--kr-text); }
+
+  @media (max-width: 980px) {
+    .article-layout { grid-template-columns: 1fr; gap: 28px; }
+    .article-sidebar { position: static; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <article class="article-shell" id="app">
+    <header style="display:grid; gap:16px; padding-bottom:26px; border-bottom:1px solid var(--kr-border);">
+      <span class="article-kicker" id="domain">加载中...</span>
+      <h1 class="article-title" id="title">加载中...</h1>
+      <p class="article-deck" id="summary"></p>
+      <div class="article-meta">
+        <span id="views">0 浏览</span>
+        <span id="likes">0 点赞</span>
+      </div>
+      <div class="article-tags" id="tags"></div>
+    </header>
+
+    <div class="article-layout">
+      <aside class="article-sidebar">
+        <div class="sidebar-block">
+          <span class="sidebar-kicker">阅读说明</span>
+          <p class="sidebar-text">采用更窄的正文宽度、更大的标题和更克制的分隔，让阅读更像长文页面。</p>
+        </div>
+        <div class="sidebar-block">
+          <span class="sidebar-kicker">内容概览</span>
+          <ul class="sidebar-list">
+            <li class="sidebar-item" id="meta-domain">领域：加载中</li>
+            <li class="sidebar-item" id="meta-reading">阅读时长：约 1 分钟</li>
+            <li class="sidebar-item" id="meta-stats">互动：0 赞 / 0 浏览</li>
+          </ul>
+        </div>
+      </aside>
+
+      <section class="article-content">
+        <div class="content-block">
+          <span class="content-kicker">正文</span>
+          <div class="content-body markdown-body" id="content"></div>
+        </div>
+      </section>
+    </div>
+  </article>
+</div>
+
+<script>
+// 自定义 marked renderer
+const renderer = new marked.Renderer();
+renderer.code = function({ text, lang }) {
+  let highlighted;
+  try {
+    highlighted = lang && hljs.getLanguage(lang)
+      ? hljs.highlight(text, { language: lang }).value
+      : hljs.highlightAuto(text).value;
+  } catch(e) {
+    highlighted = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  const langLabel = lang ? `<span class="code-lang-label">${lang}</span>` : '';
+  return `<div class="code-block-wrapper">${langLabel}<pre><code class="hljs">${highlighted}</code></pre></div>`;
+};
+renderer.image = function({ href, title, text }) {
+  const titleAttr = title ? ` title="${title}"` : '';
+  return `<figure class="article-figure"><img src="${href}" alt="${text||''}"${titleAttr} loading="lazy" />${text ? `<figcaption>${text}</figcaption>` : ''}</figure>`;
+};
+
+marked.setOptions({ gfm: true, breaks: true, renderer });
+
+fetch('/mock-post.json')
+  .then(r => r.json())
+  .then(post => {
+    document.getElementById('domain').textContent = post.domain_name;
+    document.getElementById('title').textContent = post.title;
+    document.getElementById('summary').textContent = post.summary;
+    document.getElementById('views').textContent = `${post.view_count} 浏览`;
+    document.getElementById('likes').textContent = `${post.like_count} 点赞`;
+    document.getElementById('meta-domain').textContent = `领域：${post.domain_name}`;
+    const readMin = Math.max(1, Math.round(post.content.replace(/\s+/g,'').length / 320));
+    document.getElementById('meta-reading').textContent = `阅读时长：约 ${readMin} 分钟`;
+    document.getElementById('meta-stats').textContent = `互动：${post.like_count} 赞 / ${post.view_count} 浏览`;
+
+    const tagsEl = document.getElementById('tags');
+    (post.tags || []).forEach(t => {
+      const span = document.createElement('span');
+      span.className = 'tag-chip';
+      span.textContent = t;
+      tagsEl.appendChild(span);
+    });
+
+    document.getElementById('content').innerHTML = marked.parse(post.content);
+  });
+</script>
+</body>
+</html>

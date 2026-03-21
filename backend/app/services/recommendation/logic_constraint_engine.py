@@ -34,13 +34,16 @@ PREREQUISITE_REMEDIAL_BONUS = 0.02
 PARENT_CHILD_BONUS = 0.03
 PARENT_PARENT_BONUS = 0.015
 RELATED_BONUS = 0.012
+PREREQUISITE_CHAIN_MAX_DEPTH = 3    # 前置链最大递归深度
+PREREQUISITE_CHAIN_DECAY = 0.5      # 每多一跳惩罚衰减为上一跳的 50%
 MAX_LOGIC_BONUS = 0.12
 MAX_LOGIC_PENALTY = 0.14
 
 
 class LogicConstraintEngine:
 
-    def recall(self, user_id, top_n=200):
+    def recall(self, user_id, top_n=200, exclude_post_ids=None):
+        exclude_post_ids = exclude_post_ids or set()
         profile = self._build_user_tag_profile(user_id)
         if not profile["engaged_tag_ids"]:
             return {}
@@ -61,11 +64,12 @@ class LogicConstraintEngine:
             for tag_id, _score in sorted(candidate_tag_scores.items(), key=lambda item: -item[1])[:TAG_RECALL_LIMIT]
         ]
         interacted_post_ids = self._load_interacted_post_ids(user_id)
+        interacted_post_ids |= exclude_post_ids
         post_scores = self._score_posts_from_tags(ranked_tag_ids, candidate_tag_scores, interacted_post_ids)
         ranked_scores = dict(sorted(post_scores.items(), key=lambda item: -item[1])[:max(top_n, POST_RECALL_LIMIT)])
         return min_max_normalize(ranked_scores)
 
-    def apply(self, user_id, results):
+    def apply(self, user_id, results, post_cache=None):
         if not results:
             return []
 
@@ -80,7 +84,7 @@ class LogicConstraintEngine:
         relation_index = self._build_relation_index(relations)
         adjusted = []
         for item in results:
-            post = db.session.get(Post, item["post_id"])
+            post = (post_cache.get(item["post_id"]) if post_cache else None) or db.session.get(Post, item["post_id"])
             if not post:
                 continue
 
@@ -248,6 +252,12 @@ class LogicConstraintEngine:
                     else:
                         logic_penalty += PREREQUISITE_MISSING_PENALTY * max(0.6, strength)
                         logic_reasons.append("missing_prerequisite")
+                    # 递归检查前置链：A→B→C，帖子标签是C，检查A是否掌握
+                    chain_penalty, chain_reasons = self._check_prerequisite_chain(
+                        relation.source_tag_id, mastered_tag_ids, relation_index, depth=1,
+                    )
+                    logic_penalty += chain_penalty
+                    logic_reasons.extend(chain_reasons)
                 elif relation.relation_type == "PARENT_OF":
                     logic_bonus += PARENT_CHILD_BONUS * strength
                     logic_reasons.append("matched_child_topic")
@@ -274,3 +284,29 @@ class LogicConstraintEngine:
             min(logic_penalty, MAX_LOGIC_PENALTY),
             list(dict.fromkeys(logic_reasons)),
         )
+
+    def _check_prerequisite_chain(self, tag_id, mastered_tag_ids, relation_index, depth):
+        """递归检查前置链：如果 tag_id 本身也有 PREREQUISITE 前置，
+        且该前置未掌握，则追加衰减惩罚。最多递归 PREREQUISITE_CHAIN_MAX_DEPTH 层。
+        """
+        if depth >= PREREQUISITE_CHAIN_MAX_DEPTH:
+            return 0.0, []
+
+        penalty = 0.0
+        reasons = []
+        for relation in relation_index["incoming"].get(tag_id, []):
+            if relation.relation_type != "PREREQUISITE":
+                continue
+            prereq_id = relation.source_tag_id
+            if prereq_id not in mastered_tag_ids:
+                hop_penalty = PREREQUISITE_MISSING_PENALTY * (PREREQUISITE_CHAIN_DECAY ** depth)
+                penalty += hop_penalty
+                reasons.append(f"missing_prereq_chain_depth_{depth + 1}")
+                # 继续向上追溯
+                sub_penalty, sub_reasons = self._check_prerequisite_chain(
+                    prereq_id, mastered_tag_ids, relation_index, depth + 1,
+                )
+                penalty += sub_penalty
+                reasons.extend(sub_reasons)
+
+        return penalty, reasons

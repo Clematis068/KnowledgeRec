@@ -14,14 +14,20 @@ class Neo4jService:
             self._driver = GraphDatabase.driver(
                 Config.NEO4J_URI,
                 auth=(Config.NEO4J_USER, Config.NEO4J_PASSWORD),
+                connection_timeout=3,
+                max_connection_lifetime=60,
             )
         return self._driver
 
     def run_query(self, cypher, parameters=None):
         """执行只读查询，返回 list[dict]"""
-        with self.driver.session() as session:
-            result = session.run(cypher, parameters or {})
-            return [record.data() for record in result]
+        try:
+            with self.driver.session() as session:
+                result = session.run(cypher, parameters or {})
+                return [record.data() for record in result]
+        except Exception as e:
+            print(f"[Neo4j] 查询失败: {e}")
+            return []
 
     def run_write(self, cypher, parameters=None):
         """执行写入操作"""

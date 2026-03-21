@@ -91,11 +91,13 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-llm", action="store_true")
+    parser.add_argument("--dir", default=str(BATCH_DIR), help="JSON 文件目录")
     args = parser.parse_args()
 
-    json_files = sorted(BATCH_DIR.glob("*.json"))
+    batch_dir = Path(args.dir).resolve()
+    json_files = sorted(batch_dir.glob("*.json"))
     if not json_files:
-        raise SystemExit(f"没有找到 JSON 文件: {BATCH_DIR}")
+        raise SystemExit(f"没有找到 JSON 文件: {batch_dir}")
 
     app = create_app()
     random.seed(42)

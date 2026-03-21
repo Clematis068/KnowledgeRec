@@ -56,8 +56,9 @@ class SwingEngine:
 
         print(f"  Swing相似度计算完成，共 {count} 个物品")
 
-    def recommend(self, user_id, candidate_ids=None, top_n=200):
+    def recommend(self, user_id, candidate_ids=None, top_n=200, exclude_post_ids=None):
         """在线推荐：为用户生成 Swing 得分。"""
+        exclude_post_ids = exclude_post_ids or set()
         stmt = db.select(UserBehavior).filter_by(user_id=user_id)
         behaviors = db.session.scalars(stmt).all()
         if not behaviors:
@@ -69,6 +70,7 @@ class SwingEngine:
             user_ratings[behavior.post_id] = max(user_ratings.get(behavior.post_id, 0.0), score)
 
         interacted = set(user_ratings.keys())
+        skip = interacted | exclude_post_ids
         scores = defaultdict(float)
         cache_hits = 0
 
@@ -81,7 +83,7 @@ class SwingEngine:
                 cache_hits += 1
             for sim_item_str, sim_score in similar:
                 sim_item = int(sim_item_str)
-                if sim_item in interacted:
+                if sim_item in skip:
                     continue
                 if candidate_ids and sim_item not in candidate_ids:
                     continue
@@ -92,11 +94,12 @@ class SwingEngine:
             return min_max_normalize(ranked)
 
         if cache_hits == 0:
-            return self._recommend_online(user_ratings, candidate_ids, top_n)
+            return self._recommend_online(user_ratings, candidate_ids, top_n, exclude_post_ids)
 
         return {}
 
-    def _recommend_online(self, user_ratings, candidate_ids=None, top_n=200):
+    def _recommend_online(self, user_ratings, candidate_ids=None, top_n=200, exclude_post_ids=None):
+        exclude_post_ids = exclude_post_ids or set()
         behaviors = db.session.scalars(db.select(UserBehavior)).all()
         user_items, item_users = self.cf_engine._build_interaction_matrices(behaviors)
         item_sets = {
@@ -105,11 +108,12 @@ class SwingEngine:
         }
 
         interacted = set(user_ratings.keys())
+        skip = interacted | exclude_post_ids
         scores = defaultdict(float)
 
         for item_id, rating in user_ratings.items():
             for other_item_id in item_users:
-                if other_item_id == item_id or other_item_id in interacted:
+                if other_item_id == item_id or other_item_id in skip:
                     continue
                 if candidate_ids and other_item_id not in candidate_ids:
                     continue

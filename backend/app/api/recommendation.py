@@ -1,4 +1,6 @@
 from flask import Blueprint, request, jsonify, g
+from sqlalchemy.orm import joinedload
+
 from app import db
 from app.models.post import Post
 from app.services.recommendation import recommendation_engine
@@ -66,9 +68,22 @@ def get_recommendations(user_id):
             exclude_post_ids=exclude_post_ids,
         )
 
-        # 附带帖子详情
+        # 批量加载帖子详情
+        result_post_ids = [item['post_id'] for item in results]
+        if result_post_ids:
+            posts_map = {
+                p.id: p
+                for p in db.session.scalars(
+                    db.select(Post)
+                    .options(joinedload(Post.tags), joinedload(Post.author), joinedload(Post.domain))
+                    .filter(Post.id.in_(result_post_ids))
+                ).unique().all()
+            }
+        else:
+            posts_map = {}
+
         for item in results:
-            post = db.session.get(Post, item['post_id'])
+            post = posts_map.get(item['post_id'])
             _attach_post_snapshot(item, post)
 
         payload = {"user_id": user_id, "recommendations": results}
@@ -108,8 +123,23 @@ def get_my_recommendations():
             weights=weights,
             exclude_post_ids=exclude_post_ids,
         )
+
+        # 批量加载帖子详情
+        result_post_ids = [item['post_id'] for item in results]
+        if result_post_ids:
+            posts_map = {
+                p.id: p
+                for p in db.session.scalars(
+                    db.select(Post)
+                    .options(joinedload(Post.tags), joinedload(Post.author), joinedload(Post.domain))
+                    .filter(Post.id.in_(result_post_ids))
+                ).unique().all()
+            }
+        else:
+            posts_map = {}
+
         for item in results:
-            post = db.session.get(Post, item['post_id'])
+            post = posts_map.get(item['post_id'])
             _attach_post_snapshot(item, post)
 
         payload = {"user_id": user_id, "recommendations": results}

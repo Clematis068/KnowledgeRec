@@ -29,7 +29,10 @@
           </div>
         </header>
 
-        <div v-if="currentLoading" class="loading-area">
+        <div v-if="currentLoading && isRecommendFeed" class="result-area">
+          <RecCardSkeleton :count="4" />
+        </div>
+        <div v-else-if="currentLoading" class="loading-area">
           <el-icon class="is-loading" :size="32"><Loading /></el-icon>
           <p class="loading-text">{{ loadingText }}</p>
         </div>
@@ -47,7 +50,7 @@
 
             <div v-if="hasMore" ref="loadMoreTrigger" class="load-more-trigger" aria-hidden="true"></div>
 
-            <div v-if="loadingMore" class="feed-status">正在加载更多推荐...</div>
+            <RecCardSkeleton v-if="loadingMore" :count="2" />
             <div v-else-if="!hasMore" class="feed-status">没有更多推荐了</div>
           </div>
           <el-empty v-else description="暂无推荐结果" />
@@ -83,6 +86,7 @@ import { ElMessage } from 'element-plus/es/components/message/index'
 import { getFollowingPosts, getPostList, recordBehavior } from '../api/post'
 import PostCard from '../components/post/PostCard.vue'
 import RecCard from '../components/recommend/RecCard.vue'
+import RecCardSkeleton from '../components/recommend/RecCardSkeleton.vue'
 import RecommendDebugPanel from '../components/recommend/RecommendDebugPanel.vue'
 import RecommendRightRail from '../components/recommend/RecommendRightRail.vue'
 import RecReasonDialog from '../components/recommend/RecReasonDialog.vue'
