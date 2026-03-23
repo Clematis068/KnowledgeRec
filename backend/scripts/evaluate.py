@@ -271,8 +271,9 @@ def ils_at_k(recommended_ids, k, post_domain_map):
 
 
 def evaluate_config(config_name, weights, test_set, train_interacted, k_values, engine,
-                    post_domain_map, total_domains):
+                    post_domain_map, total_domains, recall_cache=None):
     """评估单个消融配置（行为已屏蔽，召回引擎只看到训练期数据）。
+    recall_cache: 可选，{user_id: results_map} 预缓存的召回结果，避免重复召回。
     返回 (avg_metrics, per_user_metrics)。
     """
     metrics = {k: {'precision': [], 'recall': [], 'ndcg': [], 'hitrate': [],
@@ -287,11 +288,25 @@ def evaluate_config(config_name, weights, test_set, train_interacted, k_values, 
         exclude = list(train_interacted.get(user_id, set()))
 
         try:
-            results = engine.recommend(
-                user_id, top_n=max_k, enable_llm=False, weights=weights,
-                exclude_post_ids=exclude,
-            )
-            recommended = [r['post_id'] for r in results]
+            if recall_cache is not None and user_id in recall_cache:
+                # 使用缓存的召回结果，只做融合 + 后处理
+                results_map = recall_cache[user_id]
+                excluded_ids = set(int(pid) for pid in exclude if str(pid).isdigit())
+                if weights is None and engine.ranker.is_available():
+                    final_results, _ = engine._gbdt_ranking_pipeline(
+                        user_id, results_map, max_k, excluded_ids, None, True,
+                    )
+                else:
+                    final_results, _ = engine._legacy_fusion_pipeline(
+                        user_id, results_map, max_k, excluded_ids, None, weights, True, True,
+                    )
+                recommended = [r['post_id'] for r in final_results]
+            else:
+                results = engine.recommend(
+                    user_id, top_n=max_k, enable_llm=False, weights=weights,
+                    exclude_post_ids=exclude,
+                )
+                recommended = [r['post_id'] for r in results]
         except Exception as e:
             print(f"  [{config_name}] user {user_id} error: {e}")
             recommended = []
@@ -312,7 +327,7 @@ def evaluate_config(config_name, weights, test_set, train_interacted, k_values, 
             user_metrics[k] = {'precision': p, 'recall': r, 'ndcg': n, 'hitrate': h}
         per_user[user_id] = user_metrics
 
-        if (i + 1) % 20 == 0:
+        if (i + 1) % 50 == 0:
             print(f"  [{config_name}] 进度: {i + 1}/{len(user_ids)}")
 
     avg_metrics = {}
@@ -807,6 +822,20 @@ def main():
             )
 
             # ── 消融实验 ──
+            # 核心优化：每用户只召回一次，所有配置复用召回结果
+            print("\n--- 预缓存召回结果（每用户只召回一次） ---")
+            recall_cache = {}  # {user_id: results_map}
+            user_ids = list(test_set.keys())
+            for i, user_id in enumerate(user_ids):
+                try:
+                    results_map = engine._parallel_recall(user_id, enable_llm=False)
+                    recall_cache[user_id] = results_map
+                except Exception as e:
+                    print(f"  user {user_id} recall error: {e}")
+                if (i + 1) % 50 == 0:
+                    print(f"  召回进度: {i + 1}/{len(user_ids)}")
+            print(f"  召回缓存完成: {len(recall_cache)} 用户")
+
             print("\n--- 消融实验 ---")
             all_per_user = {}  # {config_name: {user_id: {k: metrics}}}
             for config_name, weights in ABLATION_CONFIGS.items():
@@ -814,6 +843,7 @@ def main():
                 avg, per_user = evaluate_config(
                     config_name, weights, test_set, train_interacted,
                     K_VALUES, engine, post_domain_map, total_domains,
+                    recall_cache=recall_cache,
                 )
                 all_results[config_name] = avg
                 all_per_user[config_name] = per_user
