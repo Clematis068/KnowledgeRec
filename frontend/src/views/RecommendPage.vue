@@ -22,7 +22,7 @@
               class="toolbar-button toolbar-button--text"
               text
               :icon="View"
-              @click="showDebugPanel = true"
+              @click="openDebugPanel"
             >
               调试
             </el-button>
@@ -103,6 +103,7 @@ const loadingText = ref('正在加载内容...')
 const showDebugPanel = ref(false)
 const selectedUserId = ref(null)
 const loadMoreTrigger = ref(null)
+const skipNextAutoLoad = ref(false)
 
 const followingPosts = ref([])
 const latestPosts = ref([])
@@ -118,13 +119,16 @@ const {
   hasMore,
   isOwnSelection,
   refreshRecommendations,
+  advanceRecommendations,
   loadMoreRecommendations,
   removeRecommendation,
+  loadDebugSnapshot,
 } = useInfiniteRecommend({
   authStore,
   selectedUserId,
   batchSize: RECOMMEND_BATCH_SIZE,
-  debug: true,
+  debug: false,
+  enableLlm: false,
 })
 
 const isRecommendFeed = computed(() => activeFeed.value === 'recommend')
@@ -176,7 +180,11 @@ async function fetchLatestFeed() {
 
 function refreshCurrentFeed() {
   if (isRecommendFeed.value) {
-    loadingText.value = '正在为你加载推荐...'
+    loadingText.value = recommendations.value.length ? '正在切换下一批推荐...' : '正在为你加载推荐...'
+    if (recommendations.value.length) {
+      skipNextAutoLoad.value = true
+      return advanceRecommendations()
+    }
     return refreshRecommendations()
   }
   if (activeFeed.value === 'following') {
@@ -207,6 +215,17 @@ function handleTabChange() {
 function openReason(postId) {
   reasonPostId.value = postId
   reasonDialogVisible.value = true
+}
+
+async function openDebugPanel() {
+  showDebugPanel.value = true
+  if (recommendDebug.value) return
+
+  try {
+    await loadDebugSnapshot()
+  } catch {
+    // 错误已由拦截器处理
+  }
 }
 
 async function handleDislike(postId) {
@@ -241,6 +260,10 @@ function setupLoadMoreObserver() {
     (entries) => {
       const entry = entries[0]
       if (entry?.isIntersecting) {
+        if (skipNextAutoLoad.value) {
+          skipNextAutoLoad.value = false
+          return
+        }
         loadMoreRecommendations()
       }
     },

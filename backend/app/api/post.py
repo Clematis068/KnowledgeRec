@@ -1,4 +1,7 @@
-from flask import Blueprint, request, jsonify, g
+import logging
+import threading
+
+from flask import Blueprint, request, jsonify, g, current_app
 from app import db
 from app.models.post import Post
 from app.models.behavior import (
@@ -15,6 +18,7 @@ from app.utils.context import normalize_context_targets, normalize_region_code, 
 from app.utils.content_filter import apply_post_visibility_query, is_post_visible_to_user
 
 post_bp = Blueprint('post', __name__)
+logger = logging.getLogger(__name__)
 
 
 def _sync_post_to_neo4j(post):
@@ -63,6 +67,74 @@ def _refresh_post_summary_and_embedding(post):
         post.content_embedding = qwen_service.get_embedding(post.title + " " + post.content[:500])
     except Exception:
         pass
+
+
+def _extract_auto_tag_names(post, domain_name):
+    from app.services.qwen_service import qwen_service
+
+    prompt = (
+        f"标题：{post.title}\n"
+        f"领域：{domain_name}\n"
+        f"正文：{post.content[:3000]}\n\n"
+        "请为这篇知识社区帖子提取2到3个简洁的中文标签。"
+        "要求："
+        "1. 标签必须贴合给定领域；"
+        "2. 尽量使用知识主题词，不要泛化词；"
+        "3. 若内容跨主题，也优先选择能归入当前领域体系的表达；"
+        "4. 严格返回JSON：{\"tags\":[\"标签1\",\"标签2\"]}"
+    )
+    result = qwen_service.chat_json(prompt, system_prompt="你是知识社区帖子标签提取助手。")
+    raw_tags = result.get('tags') or []
+    normalized = []
+    seen = set()
+    for item in raw_tags:
+        tag_name = tag_taxonomy_service.normalize_text(item)
+        if not tag_name or tag_name in seen:
+            continue
+        seen.add(tag_name)
+        normalized.append(tag_name)
+        if len(normalized) >= 3:
+            break
+    return normalized
+
+
+def _auto_tag_post_async(post_id, domain_id, source_user_id=None):
+    app = current_app._get_current_object()
+
+    def worker():
+        with app.app_context():
+            try:
+                post = db.session.get(Post, post_id)
+                if not post:
+                    return
+
+                from app.models.domain import Domain
+
+                domain = db.session.get(Domain, domain_id)
+                domain_name = domain.name if domain else '未知领域'
+                tag_names = _extract_auto_tag_names(post, domain_name)
+                if not tag_names:
+                    return
+
+                _bind_post_tags(
+                    post,
+                    domain_id,
+                    tag_names=tag_names,
+                    source_user_id=source_user_id,
+                )
+                db.session.commit()
+                _sync_post_to_neo4j(post)
+            except Exception as exc:
+                db.session.rollback()
+                logger.warning("Auto tag post failed for post=%s: %s", post_id, exc)
+            finally:
+                db.session.remove()
+
+    threading.Thread(
+        target=worker,
+        name=f"post-auto-tag-{post_id}",
+        daemon=True,
+    ).start()
 
 
 def _bind_post_tags(post, domain_id, tag_ids=None, tag_names=None, source_user_id=None):
@@ -156,9 +228,6 @@ def create_post():
     title = data.get('title', '').strip()
     content = data.get('content', '').strip()
     domain_id = data.get('domain_id')
-    tag_ids = data.get('tag_ids', [])
-    tag_names = data.get('tags', [])
-
     if not title or not content or not domain_id:
         return jsonify({"error": "标题、正文和领域不能为空"}), 400
 
@@ -172,16 +241,11 @@ def create_post():
     db.session.add(post)
     db.session.flush()
     _apply_post_context_targets(post, data)
-    _bind_post_tags(
-        post,
-        domain_id,
-        tag_ids=tag_ids,
-        tag_names=tag_names,
-        source_user_id=g.current_user.id,
-    )
+    post.tags = []
     _refresh_post_summary_and_embedding(post)
     db.session.commit()
     _sync_post_to_neo4j(post)
+    _auto_tag_post_async(post.id, domain_id, source_user_id=g.current_user.id)
 
     return jsonify(post.to_dict()), 201
 
@@ -212,9 +276,6 @@ def update_post(post_id):
     title = data.get('title', '').strip()
     content = data.get('content', '').strip()
     domain_id = data.get('domain_id')
-    tag_ids = data.get('tag_ids', [])
-    tag_names = data.get('tags', [])
-
     if not title or not content or not domain_id:
         return jsonify({"error": "标题、正文和领域不能为空"}), 400
 
@@ -222,17 +283,12 @@ def update_post(post_id):
     post.content = content
     post.domain_id = domain_id
     _apply_post_context_targets(post, data)
-    _bind_post_tags(
-        post,
-        domain_id,
-        tag_ids=tag_ids,
-        tag_names=tag_names,
-        source_user_id=g.current_user.id,
-    )
+    post.tags = []
     _refresh_post_summary_and_embedding(post)
 
     db.session.commit()
     _sync_post_to_neo4j(post)
+    _auto_tag_post_async(post.id, domain_id, source_user_id=g.current_user.id)
     return jsonify(post.to_dict())
 
 

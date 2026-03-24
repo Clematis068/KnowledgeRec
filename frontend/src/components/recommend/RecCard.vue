@@ -17,11 +17,12 @@
         <span v-for="tag in previewTags" :key="tag" class="topic-pill">{{ tag }}</span>
       </div>
 
+      <p v-if="graphPathText" class="graph-path">{{ graphPathText }}</p>
+
       <div class="meta-row">
         <span class="meta-item">{{ formattedDate }}</span>
         <span class="meta-item">{{ item.view_count || 0 }} 浏览</span>
         <span class="meta-item">{{ item.like_count || 0 }} 赞</span>
-        <span class="meta-item">推荐分 {{ displayScore }}</span>
       </div>
 
       <div class="action-row">
@@ -64,6 +65,7 @@ const summaryText = computed(() => (
 ))
 
 const previewTags = computed(() => (props.item.tags || []).slice(0, 3))
+const graphPathText = computed(() => props.item.graph_path_text || '')
 
 const displayScore = computed(() => {
   const score = props.item.final_score ?? props.item.score
@@ -160,7 +162,8 @@ const thumbnailSrc = computed(() => createPostThumbnail({
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--kr-bg-soft, #f5f3ef);
+  border: 1px solid var(--kr-border);
   color: var(--kr-text);
   font-size: 12px;
   font-weight: 700;
@@ -168,6 +171,17 @@ const thumbnailSrc = computed(() => createPostThumbnail({
 
 .meta-row {
   margin-top: 16px;
+}
+
+.graph-path {
+  margin-top: 14px;
+  max-width: 44rem;
+  color: var(--kr-text);
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 10px 12px;
+  border-left: 3px solid var(--kr-text);
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .action-row {

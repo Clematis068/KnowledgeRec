@@ -11,7 +11,7 @@ class Config:
     # MySQL
     SQLALCHEMY_DATABASE_URI = os.getenv(
         'MYSQL_URI',
-        'mysql+pymysql://root:password@localhost:3306/knowledge_community'
+        'mysql+pymysql://root:password@localhost:3306/knowledge_community_old'
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 

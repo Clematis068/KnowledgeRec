@@ -2,7 +2,13 @@ import { computed, ref, unref } from 'vue'
 
 import { getRecommendations, getMyRecommendations } from '../api/recommendation'
 
-export function useInfiniteRecommend({ authStore, selectedUserId, batchSize = 20, debug = true } = {}) {
+export function useInfiniteRecommend({
+  authStore,
+  selectedUserId,
+  batchSize = 20,
+  debug = false,
+  enableLlm = false,
+} = {}) {
   const recommendations = ref([])
   const recommendDebug = ref(null)
   const loading = ref(false)
@@ -23,25 +29,25 @@ export function useInfiniteRecommend({ authStore, selectedUserId, batchSize = 20
     })
   }
 
-  async function requestBatch(excludePostIds = []) {
+  async function requestBatch(excludePostIds = [], overrides = {}) {
     const userId = unref(selectedUserId)
     if (!userId) {
       return { recommendations: [], debug: null }
     }
 
-    if (isOwnSelection.value) {
-      return getMyRecommendations({
-        topN: batchSize,
-        debug,
-        excludePostIds,
-      })
-    }
-
-    return getRecommendations(userId, {
+    const requestOptions = {
       topN: batchSize,
       debug,
+      enableLlm,
       excludePostIds,
-    })
+      ...overrides,
+    }
+
+    if (isOwnSelection.value) {
+      return getMyRecommendations(requestOptions)
+    }
+
+    return getRecommendations(userId, requestOptions)
   }
 
   async function refreshRecommendations() {
@@ -60,6 +66,33 @@ export function useInfiniteRecommend({ authStore, selectedUserId, batchSize = 20
     } catch {
       recommendations.value = []
       recommendDebug.value = null
+      hasMore.value = false
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function advanceRecommendations() {
+    const userId = unref(selectedUserId)
+    if (!userId) return
+
+    const excludePostIds = loadedPostIds.value
+    if (!excludePostIds.length) {
+      return refreshRecommendations()
+    }
+
+    loading.value = true
+
+    try {
+      const data = await requestBatch(excludePostIds)
+      const nextItems = dedupeItems(data.recommendations)
+
+      if (nextItems.length) {
+        recommendations.value = nextItems
+      }
+
+      hasMore.value = nextItems.length >= batchSize
+    } catch {
       hasMore.value = false
     } finally {
       loading.value = false
@@ -94,6 +127,15 @@ export function useInfiniteRecommend({ authStore, selectedUserId, batchSize = 20
     recommendations.value = recommendations.value.filter((item) => item.post_id !== postId)
   }
 
+  async function loadDebugSnapshot() {
+    const userId = unref(selectedUserId)
+    if (!userId) return null
+
+    const data = await requestBatch([], { debug: true })
+    recommendDebug.value = data.debug || null
+    return recommendDebug.value
+  }
+
   return {
     recommendations,
     recommendDebug,
@@ -103,7 +145,9 @@ export function useInfiniteRecommend({ authStore, selectedUserId, batchSize = 20
     isOwnSelection,
     loadedPostIds,
     refreshRecommendations,
+    advanceRecommendations,
     loadMoreRecommendations,
     removeRecommendation,
+    loadDebugSnapshot,
   }
 }

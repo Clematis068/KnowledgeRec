@@ -58,18 +58,32 @@ def get_recommendations(user_id):
         weights = {'cf': w_cf, 'graph': w_graph, 'semantic': w_semantic}
 
     try:
-        results, debug_info = recommendation_engine.recommend_with_debug(
-            user_id,
-            top_n=top_n,
-            enable_llm=enable_llm,
-            enable_hot=enable_hot,
-            request_context=request_context,
-            weights=weights,
-            exclude_post_ids=exclude_post_ids,
-        )
+        if debug:
+            results, debug_info = recommendation_engine.recommend_with_debug(
+                user_id,
+                top_n=top_n,
+                enable_llm=enable_llm,
+                enable_hot=enable_hot,
+                request_context=request_context,
+                weights=weights,
+                exclude_post_ids=exclude_post_ids,
+            )
+        else:
+            results = recommendation_engine.recommend(
+                user_id,
+                top_n=top_n,
+                enable_llm=enable_llm,
+                enable_hot=enable_hot,
+                request_context=request_context,
+                weights=weights,
+                exclude_post_ids=exclude_post_ids,
+            )
+            debug_info = None
+
+        result_post_ids = [item['post_id'] for item in results]
+        graph_paths = recommendation_engine.graph.explain_paths(user_id, result_post_ids) if result_post_ids else {}
 
         # 批量加载帖子详情
-        result_post_ids = [item['post_id'] for item in results]
         if result_post_ids:
             posts_map = {
                 p.id: p
@@ -85,6 +99,14 @@ def get_recommendations(user_id):
         for item in results:
             post = posts_map.get(item['post_id'])
             _attach_post_snapshot(item, post)
+            graph_path = graph_paths.get(item['post_id'])
+            if graph_path:
+                item['graph_path'] = graph_path or {'type': 'graph_signal'}
+                item['graph_path_text'] = (
+                    graph_path.get('text')
+                    if graph_path else
+                    '该帖子与你的兴趣标签、领域偏好或社交关系存在图结构关联'
+                )
 
         payload = {"user_id": user_id, "recommendations": results}
         if debug:
@@ -114,18 +136,32 @@ def get_my_recommendations():
         weights = {'cf': w_cf, 'graph': w_graph, 'semantic': w_semantic}
 
     try:
-        results, debug_info = recommendation_engine.recommend_with_debug(
-            user_id,
-            top_n=top_n,
-            enable_llm=enable_llm,
-            enable_hot=enable_hot,
-            request_context=request_context,
-            weights=weights,
-            exclude_post_ids=exclude_post_ids,
-        )
+        if debug:
+            results, debug_info = recommendation_engine.recommend_with_debug(
+                user_id,
+                top_n=top_n,
+                enable_llm=enable_llm,
+                enable_hot=enable_hot,
+                request_context=request_context,
+                weights=weights,
+                exclude_post_ids=exclude_post_ids,
+            )
+        else:
+            results = recommendation_engine.recommend(
+                user_id,
+                top_n=top_n,
+                enable_llm=enable_llm,
+                enable_hot=enable_hot,
+                request_context=request_context,
+                weights=weights,
+                exclude_post_ids=exclude_post_ids,
+            )
+            debug_info = None
+
+        result_post_ids = [item['post_id'] for item in results]
+        graph_paths = recommendation_engine.graph.explain_paths(user_id, result_post_ids) if result_post_ids else {}
 
         # 批量加载帖子详情
-        result_post_ids = [item['post_id'] for item in results]
         if result_post_ids:
             posts_map = {
                 p.id: p
@@ -141,6 +177,14 @@ def get_my_recommendations():
         for item in results:
             post = posts_map.get(item['post_id'])
             _attach_post_snapshot(item, post)
+            graph_path = graph_paths.get(item['post_id'])
+            if graph_path:
+                item['graph_path'] = graph_path or {'type': 'graph_signal'}
+                item['graph_path_text'] = (
+                    graph_path.get('text')
+                    if graph_path else
+                    '该帖子与你的兴趣标签、领域偏好或社交关系存在图结构关联'
+                )
 
         payload = {"user_id": user_id, "recommendations": results}
         if debug:
