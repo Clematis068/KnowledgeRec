@@ -1,6 +1,6 @@
 <template>
   <div class="evaluation-page">
-    <h1 class="page-title">实验评估 Dashboard</h1>
+    <h1 class="page-title">实验评估</h1>
 
     <div v-if="loading" class="loading-state">
       <el-icon class="is-loading" :size="28"><Loading /></el-icon>
@@ -327,8 +327,9 @@ onBeforeUnmount(() => {
 }
 
 .page-title {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: clamp(2rem, 3vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
   margin-bottom: 24px;
 }
 

@@ -2,6 +2,7 @@
   <div class="hot-page">
     <div class="page-header">
       <h2><el-icon><TrendCharts /></el-icon> 热门帖子</h2>
+      <p class="page-subtitle">按热度排序，每次刷新都是最新数据</p>
     </div>
 
     <div v-loading="loading">
@@ -63,6 +64,12 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   letter-spacing: -0.05em;
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: var(--kr-text-soft);
+  line-height: 1.7;
 }
 
 .hot-item {

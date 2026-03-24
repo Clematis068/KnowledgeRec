@@ -53,7 +53,10 @@ ABLATION_CONFIGS = {
 }
 
 K_VALUES = [5, 10, 20]
-REPORT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports", "evaluation")
+REPORT_DIR = os.environ.get(
+    'EVAL_REPORT_DIR',
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports", "evaluation"),
+)
 
 
 # ─── Baseline 推荐方法 ───

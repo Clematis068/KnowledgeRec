@@ -14,15 +14,15 @@ export function connectSocket(token) {
   })
 
   socket.on('connect', () => {
-    console.log('[WS] connected', socket.id)
+    // connected
   })
 
-  socket.on('disconnect', (reason) => {
-    console.log('[WS] disconnected:', reason)
+  socket.on('disconnect', () => {
+    // disconnected
   })
 
-  socket.on('connect_error', (err) => {
-    console.warn('[WS] connect error:', err.message)
+  socket.on('connect_error', () => {
+    // connection error
   })
 }
 

@@ -90,7 +90,7 @@
             {{ conv.unread_count > 99 ? '99+' : conv.unread_count }}
           </span>
         </div>
-        <el-empty v-if="!msgLoading && conversations.length === 0" description="搜索用户名发起私信" />
+        <el-empty v-if="!msgLoading && conversations.length === 0" description="暂无私信，搜索用户名发起对话" />
       </div>
 
       <!-- 聊天详情 -->
@@ -166,10 +166,25 @@
 
     <!-- 分享帖子对话框 -->
     <el-dialog v-model="showSharePostDialog" title="分享帖子" width="400px">
-      <el-input v-model="sharePostId" placeholder="输入帖子 ID" type="number" />
+      <el-autocomplete
+        v-model="sharePostQuery"
+        :fetch-suggestions="searchSharePosts"
+        placeholder="搜索帖子标题..."
+        value-key="title"
+        clearable
+        style="width: 100%"
+        @select="handleSharePostSelect"
+      >
+        <template #default="{ item }">
+          <div style="display: flex; flex-direction: column; gap: 2px; padding: 4px 0">
+            <span style="font-weight: 600; font-size: 13px">{{ item.title }}</span>
+            <span style="font-size: 11px; color: #999">{{ item.author_name || '匿名' }} · {{ item.like_count || 0 }} 赞</span>
+          </div>
+        </template>
+      </el-autocomplete>
       <template #footer>
         <el-button @click="showSharePostDialog = false">取消</el-button>
-        <el-button type="primary" :loading="sending" @click="handleSharePost">分享</el-button>
+        <el-button type="primary" :loading="sending" :disabled="!sharePostId" @click="handleSharePost">分享</el-button>
       </template>
     </el-dialog>
   </div>
@@ -226,6 +241,7 @@ const previewImageUrl = ref(null)
 // 帖子分享
 const showSharePostDialog = ref(false)
 const sharePostId = ref('')
+const sharePostQuery = ref('')
 
 // 新建对话搜索
 const newChatQuery = ref('')
@@ -414,7 +430,7 @@ async function handleImageSelected(e) {
 async function handleSharePost() {
   const postId = parseInt(sharePostId.value)
   if (!postId) {
-    ElMessage.warning('请输入有效的帖子 ID')
+    ElMessage.warning('请先选择要分享的帖子')
     return
   }
   sending.value = true
@@ -437,6 +453,24 @@ async function handleSharePost() {
 
 function previewImage(url) {
   previewImageUrl.value = url
+}
+
+async function searchSharePosts(queryString, callback) {
+  if (!queryString?.trim()) {
+    callback([])
+    return
+  }
+  try {
+    const data = await searchPosts(queryString.trim(), 1, 8, 'post')
+    callback(data.posts || [])
+  } catch {
+    callback([])
+  }
+}
+
+function handleSharePostSelect(item) {
+  sharePostId.value = String(item.id)
+  sharePostQuery.value = item.title
 }
 
 function scrollToBottom() {
@@ -517,8 +551,9 @@ onBeforeUnmount(() => {
 }
 
 .page-header h2 {
-  font-size: 1.4rem;
-  font-weight: 700;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 
 .tab-bar {

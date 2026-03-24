@@ -44,9 +44,8 @@ function goToDashboard() {
   <div class="login-page">
     <div class="login-shell">
       <section class="login-copy card-panel">
-        <span class="page-kicker">登录</span>
-        <h1>登录后进入你的推荐页。</h1>
-        <p>未登录时先到这里，已登录时可直接返回推荐页。</p>
+        <h1>欢迎回来</h1>
+        <p>登录后可以获取个性化推荐，关注你感兴趣的话题和作者。</p>
 
         <div class="copy-actions">
           <router-link to="/">
@@ -66,7 +65,7 @@ function goToDashboard() {
             </div>
             <div>
               <h2>知识推荐</h2>
-              <p>登录 / 注册分开处理。</p>
+              <p>输入账号信息登录社区。</p>
             </div>
           </div>
 
@@ -149,20 +148,6 @@ function goToDashboard() {
   min-height: 540px;
   padding: 34px;
   background: var(--kr-bg-soft);
-}
-
-.page-kicker {
-  display: inline-flex;
-  width: fit-content;
-  margin-bottom: 14px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--kr-primary-strong);
-  background: var(--kr-primary-soft);
 }
 
 .login-copy h1,

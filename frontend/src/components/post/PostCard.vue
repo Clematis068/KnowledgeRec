@@ -141,7 +141,8 @@ function goToDetail() {
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--kr-bg-soft, #f5f3ef);
+  border: 1px solid var(--kr-border);
   color: var(--kr-text);
   font-size: 12px;
   font-weight: 700;

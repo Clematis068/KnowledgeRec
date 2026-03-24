@@ -35,7 +35,7 @@ function logout() {
           <el-icon :size="28"><Connection /></el-icon>
         </span>
         <h1 class="brand-title">知识推荐</h1>
-        <p class="brand-subtitle">Knowledge Recommendation Community</p>
+        <p class="brand-subtitle">一个围绕知识分享的社区，找到你关心的内容</p>
       </div>
 
       <!-- 搜索区 -->

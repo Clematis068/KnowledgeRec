@@ -184,9 +184,8 @@ onBeforeUnmount(clearCountdown)
   <div class="register-page">
     <div class="register-shell">
       <section class="register-copy card-panel">
-        <span class="page-kicker">注册</span>
-        <h1>三步创建你的社区账号。</h1>
-        <p>先填账号信息，再验证邮箱，最后选择兴趣。</p>
+        <h1>创建账号</h1>
+        <p>填写信息、验证邮箱、选择兴趣，三步完成注册。</p>
 
         <div class="copy-links">
           <router-link to="/login">
@@ -205,7 +204,7 @@ onBeforeUnmount(clearCountdown)
           </div>
           <div>
             <h2>注册账号</h2>
-            <p>完成后直接进入推荐页。</p>
+            <p>注册后即可使用社区全部功能。</p>
           </div>
         </div>
 
@@ -315,19 +314,6 @@ onBeforeUnmount(clearCountdown)
   min-height: 320px;
   padding: 34px;
   background: var(--kr-bg-soft);
-}
-
-.page-kicker {
-  display: inline-flex;
-  margin-bottom: 14px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--kr-primary-strong);
-  background: var(--kr-primary-soft);
 }
 
 .register-copy h1,

@@ -146,15 +146,15 @@ watch(
 }
 
 .page-title {
-  padding: 22px 24px 8px;
+  padding: 18px 24px;
   border: 1px solid var(--kr-border);
-  border-radius: 30px 30px 18px 18px;
+  border-radius: 20px;
   background: var(--kr-surface);
   box-shadow: var(--kr-shadow-clay-soft);
-  font-size: clamp(2rem, 3vw, 3rem);
+  font-size: clamp(1.4rem, 2.5vw, 2rem);
   font-weight: 800;
-  line-height: 0.98;
-  letter-spacing: -0.05em;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
 }
 
 .search-section {

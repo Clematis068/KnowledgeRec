@@ -61,16 +61,11 @@ const props = defineProps({
 defineEmits(['showReason', 'dislike'])
 
 const summaryText = computed(() => (
-  props.item.summary || '这篇内容与你当前的阅读兴趣和行为模式高度相关，适合继续展开阅读。'
+  props.item.summary || '暂无摘要，点击查看全文。'
 ))
 
 const previewTags = computed(() => (props.item.tags || []).slice(0, 3))
 const graphPathText = computed(() => props.item.graph_path_text || '')
-
-const displayScore = computed(() => {
-  const score = props.item.final_score ?? props.item.score
-  return score == null ? '--' : score.toFixed(3)
-})
 
 const formattedDate = computed(() => {
   if (!props.item.created_at) return '最近'

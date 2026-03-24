@@ -29,41 +29,61 @@
     </div>
 
     <div v-loading="loading" class="comment-list">
-      <div v-for="c in comments" :key="c.id" class="comment-item">
-        <el-avatar :size="32" class="comment-avatar">
-          {{ c.username?.charAt(0)?.toUpperCase() }}
-        </el-avatar>
-        <div class="comment-body">
-          <div class="comment-meta">
-            <router-link :to="`/users/${c.user_id}`" class="comment-user">
-              {{ c.username }}
-            </router-link>
-            <span class="comment-time">{{ c.created_at }}</span>
+      <template v-for="c in commentTree" :key="c.id">
+        <div class="comment-item">
+          <el-avatar :size="32" class="comment-avatar">
+            {{ c.username?.charAt(0)?.toUpperCase() }}
+          </el-avatar>
+          <div class="comment-body">
+            <div class="comment-meta">
+              <router-link :to="`/users/${c.user_id}`" class="comment-user">
+                {{ c.username }}
+              </router-link>
+              <span class="comment-time">{{ c.created_at }}</span>
+            </div>
+            <div class="comment-text">{{ c.comment_text }}</div>
+            <el-button
+              v-if="authStore.isLoggedIn"
+              text size="small" class="reply-btn"
+              @click="handleReply(c)"
+            >回复</el-button>
+            <el-button
+              v-if="authStore.userId === c.user_id"
+              text size="small" class="delete-btn"
+              @click="handleDeleteComment(c)"
+            >删除</el-button>
           </div>
-          <div class="comment-text">
-            <span v-if="c.reply_to_username" class="reply-tag">回复 @{{ c.reply_to_username }}：</span>
-            {{ c.comment_text }}
-          </div>
-          <el-button
-            v-if="authStore.isLoggedIn"
-            text
-            size="small"
-            class="reply-btn"
-            @click="handleReply(c)"
-          >
-            回复
-          </el-button>
-          <el-button
-            v-if="authStore.userId === c.user_id"
-            text
-            size="small"
-            class="delete-btn"
-            @click="handleDeleteComment(c)"
-          >
-            删除
-          </el-button>
         </div>
-      </div>
+
+        <!-- 子评论 -->
+        <div v-if="c.children?.length" class="reply-thread">
+          <div v-for="r in c.children" :key="r.id" class="comment-item reply-item">
+            <el-avatar :size="28" class="comment-avatar comment-avatar--sm">
+              {{ r.username?.charAt(0)?.toUpperCase() }}
+            </el-avatar>
+            <div class="comment-body">
+              <div class="comment-meta">
+                <router-link :to="`/users/${r.user_id}`" class="comment-user">
+                  {{ r.username }}
+                </router-link>
+                <span v-if="r.reply_to_username" class="reply-tag">回复 @{{ r.reply_to_username }}</span>
+                <span class="comment-time">{{ r.created_at }}</span>
+              </div>
+              <div class="comment-text">{{ r.comment_text }}</div>
+              <el-button
+                v-if="authStore.isLoggedIn"
+                text size="small" class="reply-btn"
+                @click="handleReply(r)"
+              >回复</el-button>
+              <el-button
+                v-if="authStore.userId === r.user_id"
+                text size="small" class="delete-btn"
+                @click="handleDeleteComment(r)"
+              >删除</el-button>
+            </div>
+          </div>
+        </div>
+      </template>
       <el-empty v-if="!loading && comments.length === 0" description="暂无评论" />
     </div>
 
@@ -80,7 +100,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index'
 import { ElMessageBox } from 'element-plus/es/components/message-box/index'
 import { deleteComment, getComments, postComment } from '../../api/post'
@@ -100,6 +120,34 @@ const pageSize = 20
 const total = ref(0)
 const replyTo = ref(null)
 const commentInputRef = ref(null)
+
+// 将扁平评论列表转为两级树：顶级评论 + 子评论（所有回复平铺到根评论下）
+const commentTree = computed(() => {
+  const map = {}
+  const roots = []
+
+  // 第一遍：建索引
+  for (const c of comments.value) {
+    map[c.id] = { ...c, children: [] }
+  }
+
+  // 第二遍：挂载子评论（找到最顶级的祖先）
+  for (const c of comments.value) {
+    const node = map[c.id]
+    if (!c.parent_id || !map[c.parent_id]) {
+      roots.push(node)
+    } else {
+      // 找到根祖先
+      let ancestor = map[c.parent_id]
+      while (ancestor && ancestor.parent_id && map[ancestor.parent_id]) {
+        ancestor = map[ancestor.parent_id]
+      }
+      ancestor.children.push(node)
+    }
+  }
+
+  return roots
+})
 
 async function fetchComments() {
   loading.value = true
@@ -207,11 +255,31 @@ onMounted(fetchComments)
   box-shadow: var(--kr-shadow-clay-soft);
 }
 
+/* 子评论缩进区域 */
+.reply-thread {
+  margin-left: 44px;
+  padding-left: 16px;
+  border-left: 2px solid var(--kr-border);
+  display: grid;
+  gap: 8px;
+}
+
+.reply-item {
+  padding: 12px 14px;
+  border-radius: 18px;
+  box-shadow: none;
+  background: var(--kr-surface-alt, #fafafa);
+}
+
 .comment-avatar {
   background: linear-gradient(135deg, var(--kr-secondary), var(--kr-primary));
   color: #fff;
   font-size: 14px;
   flex-shrink: 0;
+}
+
+.comment-avatar--sm {
+  font-size: 12px;
 }
 
 .comment-body {

@@ -114,7 +114,7 @@ def main():
 
         # ── 创建 User ──
         print("[3/6] 创建 User...")
-        # 先建一个系统用户做 author
+        # 先建一个系统用户做 authorw
         system_user = User(username="epinions_system", email="system@epinions.local",
                            password_hash="system", bio="Epinions system user")
         db.session.add(system_user)

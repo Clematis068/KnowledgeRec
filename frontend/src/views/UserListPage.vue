@@ -1,7 +1,8 @@
 <template>
   <div class="user-list-page">
     <div class="page-header">
-      <h2>用户列表</h2>
+      <h2>社区用户</h2>
+      <p class="page-subtitle">看看社区里都有谁</p>
     </div>
 
     <div v-loading="loading">
@@ -66,6 +67,14 @@ onMounted(fetchUsers)
   font-size: clamp(2rem, 3vw, 3rem);
   line-height: 0.96;
   letter-spacing: -0.05em;
+  font-weight: 800;
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: var(--kr-text-soft);
+  line-height: 1.7;
+  margin-top: 6px;
 }
 
 .pagination {
