@@ -128,6 +128,7 @@ USER_STAGE_WEIGHTS = {
 
 DIVERSITY_BUFFER_MULTIPLIER = 4
 EXPLORATION_POOL_MULTIPLIER = 3
+RECALL_ROUTE_NAMES = ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot')
 
 
 class RecommendationEngine:
@@ -158,6 +159,7 @@ class RecommendationEngine:
         exclude_post_ids=None,
         enable_exploration=True,
         enable_swing=True,
+        enabled_routes=None,
     ):
         results, _ = self.recommend_with_debug(
             user_id,
@@ -169,6 +171,7 @@ class RecommendationEngine:
             exclude_post_ids=exclude_post_ids,
             enable_exploration=enable_exploration,
             enable_swing=enable_swing,
+            enabled_routes=enabled_routes,
         )
         return results
 
@@ -183,12 +186,19 @@ class RecommendationEngine:
         exclude_post_ids=None,
         enable_exploration=True,
         enable_swing=True,
+        enabled_routes=None,
     ):
         """
         多路召回 + 加权线性融合推荐流水线。
         """
         # ── 多路召回 ──
-        results_map = self._parallel_recall(user_id, enable_llm, enable_hot, enable_swing)
+        results_map = self._parallel_recall(
+            user_id,
+            enable_llm=enable_llm,
+            enable_hot=enable_hot,
+            enable_swing=enable_swing,
+            enabled_routes=enabled_routes,
+        )
 
         cf_scores = results_map['cf']
         swing_scores = results_map['swing']
@@ -417,9 +427,10 @@ class RecommendationEngine:
 
         return final_results, debug_info
 
-    def _parallel_recall(self, user_id, enable_llm=True, enable_hot=True, enable_swing=True):
+    def _parallel_recall(self, user_id, enable_llm=True, enable_hot=True, enable_swing=True, enabled_routes=None):
         """6 路并行召回，返回 {name: {post_id: score}}。"""
         app = current_app._get_current_object()
+        enabled_routes = set(enabled_routes or RECALL_ROUTE_NAMES)
 
         # ── 黑名单前置：一次性加载，传递给各召回引擎 ──
         blocked_author_ids = get_blocked_author_ids(user_id)
@@ -437,7 +448,7 @@ class RecommendationEngine:
             exclude_post_ids = set(db.session.scalars(stmt).all())
         self._last_exclude_post_ids = exclude_post_ids
 
-        pipelines = {
+        pipeline_factories = {
             'cf':        lambda: self.cf.recommend(user_id, exclude_post_ids=exclude_post_ids),
             'swing':     lambda: self.swing.recommend(user_id, exclude_post_ids=exclude_post_ids) if enable_swing else {},
             'graph':     lambda: self.graph.recommend(user_id, exclude_post_ids=exclude_post_ids),
@@ -448,12 +459,16 @@ class RecommendationEngine:
             ) if enable_hot else {},
             'knowledge': lambda: self.logic.recall(user_id, exclude_post_ids=exclude_post_ids),
         }
-        results_map = {}
-        recall_stats = {}
+        results_map = {name: {} for name in RECALL_ROUTE_NAMES}
+        recall_stats = {
+            name: {'count': 0, 'latency_ms': 0.0, 'skipped': name not in enabled_routes}
+            for name in RECALL_ROUTE_NAMES
+        }
         recall_start = time.perf_counter()
         future_to_name = {
-            self._executor.submit(self._run_pipeline_timed, fn, app): name
-            for name, fn in pipelines.items()
+            self._executor.submit(self._run_pipeline_timed, pipeline_factories[name], app): name
+            for name in RECALL_ROUTE_NAMES
+            if name in enabled_routes
         }
         for future in as_completed(future_to_name):
             name = future_to_name[future]

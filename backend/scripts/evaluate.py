@@ -22,8 +22,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app import create_app, db
 from app.models.behavior import UserBehavior
-from app.models.post import Post
-from app.models.user import User
+from app.models.post import Post, post_tag
+from app.models.tag import Tag
+from app.models.user import User, user_tag
 from app.services.recommendation import RecommendationEngine, _batch_load_posts
 from app.services.recommendation.feature_extractor import FeatureExtractor
 from app.services.recommendation.ranker import GBDTRanker, MODEL_PATH
@@ -53,6 +54,7 @@ ABLATION_CONFIGS = {
 }
 
 K_VALUES = [5, 10, 20]
+TARGET_COLD_USER_COUNT = 50
 REPORT_DIR = os.environ.get(
     'EVAL_REPORT_DIR',
     os.path.join(os.path.dirname(os.path.dirname(__file__)), "reports", "evaluation"),
@@ -181,6 +183,25 @@ def temporal_split_mask(train_ratio=0.8):
     print(f"  已屏蔽 {deleted} 条 cutoff 后行为（评估结束后恢复）")
 
     return cutoff_time, test_set, dict(train_interacted), hidden_rows
+
+
+def maybe_limit_test_set(test_set, train_interacted, protected_user_ids=None):
+    max_test_users = int(os.environ.get("EVAL_MAX_TEST_USERS", "0") or "0")
+    protected_user_ids = set(protected_user_ids or [])
+    if max_test_users <= 0 or len(test_set) <= max_test_users:
+        return test_set, train_interacted
+
+    protected = [uid for uid in test_set if uid in protected_user_ids]
+    remaining_slots = max(max_test_users - len(protected), 0)
+    candidates = [uid for uid in test_set if uid not in protected_user_ids]
+    rng = random.Random(42)
+    sampled = rng.sample(candidates, remaining_slots) if remaining_slots < len(candidates) else candidates
+    selected = set(protected) | set(sampled)
+
+    limited_test_set = {uid: test_set[uid] for uid in test_set if uid in selected}
+    limited_train_interacted = {uid: train_interacted.get(uid, set()) for uid in limited_test_set}
+    print(f"测试用户采样生效: {len(test_set)} -> {len(limited_test_set)}")
+    return limited_test_set, limited_train_interacted
 
 
 def restore_behaviors(hidden_rows):
@@ -353,6 +374,222 @@ def evaluate_config(config_name, weights, test_set, train_interacted, k_values, 
     return avg_metrics, per_user
 
 
+def get_enabled_routes(weights):
+    if weights is None:
+        return ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot')
+    active = tuple(name for name, value in weights.items() if value > 0)
+    return active or ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot')
+
+
+def build_recall_cache(engine, user_ids):
+    route_sets = sorted({get_enabled_routes(weights) for weights in ABLATION_CONFIGS.values()})
+    recall_cache = {routes: {} for routes in route_sets}
+    single_route_cache = {}
+
+    print("\n--- 预缓存召回结果（按单路缓存后组合） ---")
+    for route in ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot'):
+        print(f"  单路召回: {route}")
+        route_cache = {}
+        for i, user_id in enumerate(user_ids):
+            try:
+                route_cache[user_id] = engine._parallel_recall(
+                    user_id,
+                    enable_llm=False,
+                    enabled_routes=(route,),
+                )
+            except Exception as e:
+                print(f"    user {user_id} recall error: {e}")
+            if (i + 1) % 50 == 0:
+                print(f"    召回进度: {i + 1}/{len(user_ids)}")
+        print(f"    缓存完成: {len(route_cache)} 用户")
+        single_route_cache[route] = route_cache
+
+    print("  组合配置缓存...")
+    for routes in route_sets:
+        cache = recall_cache[routes]
+        for user_id in user_ids:
+            merged = {name: {} for name in ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot')}
+            for route in routes:
+                route_result = single_route_cache.get(route, {}).get(user_id)
+                if route_result:
+                    merged[route] = route_result.get(route, {})
+            cache[user_id] = merged
+        print(f"    {'+'.join(routes)}: {len(cache)} 用户")
+    return recall_cache
+
+
+def _build_cold_ground_truth(tags, tag_posts, post_popularity, rng):
+    candidate = set()
+    for tag in tags:
+        candidate |= tag_posts.get(tag.id, set())
+    ranked = sorted(candidate, key=lambda pid: post_popularity.get(pid, 0), reverse=True)
+    gt_size = min(rng.randint(3, 8), len(ranked))
+    gt = set(ranked[:gt_size])
+    return gt if len(gt) >= 2 else set()
+
+
+def find_existing_pure_cold_users(limit, tag_posts, post_popularity):
+    print(f"\n检查数据库中的纯冷启动用户（目标 {limit} 个）...")
+    behavior_count_sq = (
+        db.select(
+            UserBehavior.user_id.label('user_id'),
+            db.func.count(UserBehavior.id).label('behavior_count'),
+        )
+        .group_by(UserBehavior.user_id)
+        .subquery()
+    )
+    rows = db.session.execute(
+        db.select(User.id)
+        .join(user_tag, user_tag.c.user_id == User.id)
+        .outerjoin(behavior_count_sq, behavior_count_sq.c.user_id == User.id)
+        .group_by(User.id)
+        .having(db.func.coalesce(db.func.max(behavior_count_sq.c.behavior_count), 0) == 0)
+        .order_by(User.id.asc())
+    ).all()
+
+    rng = random.Random(20260324)
+    test_set = {}
+    selected_ids = []
+    for (user_id,) in rows:
+        user = db.session.get(User, user_id)
+        if not user or not user.interest_tags:
+            continue
+        gt = _build_cold_ground_truth(user.interest_tags, tag_posts, post_popularity, rng)
+        if not gt:
+            continue
+        test_set[user.id] = {'post_ids': gt}
+        selected_ids.append(user.id)
+        if len(selected_ids) >= limit:
+            break
+
+    print(f"  复用现有纯冷启动用户: {len(selected_ids)}")
+    return test_set, selected_ids
+
+
+def create_temp_pure_cold_users(limit, tag_posts, post_popularity):
+    if limit <= 0:
+        return {}, []
+
+    print(f"补充临时纯冷启动用户: {limit} 个")
+    tag_rows = db.session.execute(
+        db.select(user_tag.c.tag_id, db.func.count(user_tag.c.user_id))
+        .group_by(user_tag.c.tag_id)
+        .order_by(db.func.count(user_tag.c.user_id).desc(), user_tag.c.tag_id.asc())
+    ).all()
+    ranked_tag_ids = [tag_id for tag_id, _ in tag_rows]
+    if not ranked_tag_ids:
+        print("  无可用兴趣标签，跳过补充")
+        return {}, []
+
+    tags = db.session.scalars(db.select(Tag)).all()
+    tag_map = {tag.id: tag for tag in tags}
+    usable_tag_ids = [tag_id for tag_id in ranked_tag_ids if tag_id in tag_map and tag_posts.get(tag_id)]
+    if not usable_tag_ids:
+        print("  无可用标签帖子映射，跳过补充")
+        return {}, []
+
+    rng = random.Random(98765)
+    max_id = db.session.scalar(db.select(db.func.max(User.id))) or 0
+    created_ids = []
+    test_set = {}
+
+    for i in range(limit):
+        picks = usable_tag_ids[:min(len(usable_tag_ids), 20)]
+        tag_count = min(rng.randint(2, 4), len(picks))
+        chosen_tag_ids = rng.sample(picks, tag_count)
+        chosen_tags = [tag_map[tag_id] for tag_id in chosen_tag_ids]
+
+        user = User(
+            id=max_id + i + 1,
+            username=f"eval_pure_cold_{max_id + i + 1}",
+            email=f"eval_pure_cold_{max_id + i + 1}@test.local",
+            password_hash="no_login",
+            bio="评估临时纯冷启动用户",
+        )
+        db.session.add(user)
+        db.session.flush()
+        user.interest_tags = chosen_tags
+
+        gt = _build_cold_ground_truth(chosen_tags, tag_posts, post_popularity, rng)
+        if not gt:
+            db.session.delete(user)
+            db.session.flush()
+            continue
+        test_set[user.id] = {'post_ids': gt}
+        created_ids.append(user.id)
+
+    db.session.commit()
+    print(f"  实际补充: {len(created_ids)}")
+    return test_set, created_ids
+
+
+def sync_cold_users_to_neo4j(user_ids):
+    if not user_ids:
+        return
+    from app.services.neo4j_service import neo4j_service
+
+    for uid in user_ids:
+        user = db.session.get(User, uid)
+        if not user:
+            continue
+        neo4j_service.run_write(
+            "MERGE (u:User {id: $uid}) SET u.username = $name",
+            {"uid": user.id, "name": user.username},
+        )
+        for tag in user.interest_tags:
+            neo4j_service.run_write(
+                "MATCH (u:User {id: $uid}), (t:Tag {id: $tid}) "
+                "MERGE (u)-[r:INTERESTED_IN]->(t) SET r.weight = 1",
+                {"uid": user.id, "tid": tag.id},
+            )
+    print(f"  已同步 {len(user_ids)} 个冷启动用户到 Neo4j")
+
+
+def cleanup_temp_cold_users(user_ids):
+    if not user_ids:
+        return
+    try:
+        from app.services.neo4j_service import neo4j_service
+        neo4j_service.run_write(
+            "UNWIND $user_ids AS uid MATCH (u:User {id: uid}) DETACH DELETE u",
+            {"user_ids": list(user_ids)},
+        )
+    except Exception as e:
+        print(f"清理 Neo4j 临时冷启动用户失败: {e}")
+    db.session.execute(user_tag.delete().where(user_tag.c.user_id.in_(user_ids)))
+    db.session.execute(db.delete(User).where(User.id.in_(user_ids)))
+    db.session.commit()
+    print(f"已清理临时冷启动用户: {len(user_ids)}")
+
+
+def prepare_cold_start_eval_users(target_count):
+    pop_rows = db.session.execute(
+        db.select(UserBehavior.post_id, db.func.count().label('cnt'))
+        .filter(UserBehavior.behavior_type.in_(['like', 'favorite']))
+        .group_by(UserBehavior.post_id)
+    ).all()
+    post_popularity = {post_id: cnt for post_id, cnt in pop_rows}
+
+    pt_rows = db.session.execute(db.select(post_tag.c.post_id, post_tag.c.tag_id)).all()
+    tag_posts = defaultdict(set)
+    for post_id, tag_id in pt_rows:
+        tag_posts[tag_id].add(post_id)
+
+    existing_test_set, existing_ids = find_existing_pure_cold_users(
+        target_count, tag_posts, post_popularity,
+    )
+    missing = max(target_count - len(existing_ids), 0)
+    created_test_set, created_ids = create_temp_pure_cold_users(
+        missing, tag_posts, post_popularity,
+    )
+    selected_ids = existing_ids + created_ids
+    sync_cold_users_to_neo4j(selected_ids)
+
+    merged_test_set = dict(existing_test_set)
+    merged_test_set.update(created_test_set)
+    return merged_test_set, selected_ids, created_ids
+
+
 # ─── 报告输出 ───
 
 def write_csv(path, header, rows):
@@ -392,7 +629,7 @@ def build_ablation_rows(all_results, k_values):
     return rows
 
 
-def write_reports(all_results, k_values, test_user_count, cutoff_time):
+def write_reports(all_results, k_values, test_user_count, cutoff_time, cold_user_count=0):
     os.makedirs(REPORT_DIR, exist_ok=True)
 
     rows = build_ablation_rows(all_results, k_values)
@@ -408,6 +645,7 @@ def write_reports(all_results, k_values, test_user_count, cutoff_time):
         "",
         f"- 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         f"- 测试用户数：{test_user_count}",
+        f"- 额外纳入纯冷启动用户数：{cold_user_count}",
         f"- K 值：{k_values}",
         f"- 消融配置数：{len(all_results)}",
         f"- 评估方法：Masked Temporal Split（全局时间切分 + 行为屏蔽，cutoff = {cutoff_time}）",
@@ -423,9 +661,9 @@ def write_reports(all_results, k_values, test_user_count, cutoff_time):
         "- `[B] UserCF`：传统 User-Based CF（余弦相似度 + Top-20 近邻）",
         "",
         "### 消融配置",
-        "- 单路：仅启用 1 个召回通道，其余权重为 0",
-        "- 双路：两个通道等权 0.5",
-        "- 三路：三个通道近似等权",
+        "- 单路：只执行该路召回，并且只使用该路候选进行融合/排序",
+        "- 双路：只执行这两路召回，并且候选池仅来自这两路",
+        "- 三路：只执行这三路召回，并且候选池仅来自这三路",
         "- Full_Fusion：六路完整融合（与 active 阶段权重一致）",
         "- GBDT_Ranking：6路召回 → GBDT精排（weights=None 自动走 GBDT 路径）",
         "",
@@ -449,7 +687,8 @@ def write_reports(all_results, k_values, test_user_count, cutoff_time):
         "2. 将 cutoff 后的所有行为从 MySQL 中临时删除（让召回引擎只看到训练期数据）",
         "3. cutoff 后的 like/favorite 帖子作为 ground truth",
         "4. 推荐时通过 exclude_post_ids 排除训练期已交互帖子",
-        "5. 评估结束后恢复所有被删除的行为",
+        "5. 主评估额外纳入 50 个纯冷启动用户（优先复用库内 0 行为且有兴趣标签的用户，不足再临时补充）",
+        "6. 评估结束后恢复所有被删除的行为，并清理临时补充的冷启动用户",
         "",
         "相比原始 Temporal Split，此方法解决了召回引擎内部排除已交互帖子导致测试集",
         "无法被召回的问题（CF/Swing/Graph 引擎从 DB 读取用户行为构建候选，",
@@ -615,6 +854,7 @@ def retrain_gbdt_on_train_data(engine):
     print("\n--- 在训练期数据上重训 GBDT（嵌套时间切分） ---")
 
     RECALL_TOP_K = 50
+    max_train_users = int(os.environ.get("EVAL_GBDT_MAX_USERS", "0") or "0")
 
     # ── 内层时间切分 ──
     all_times = db.session.execute(
@@ -680,6 +920,10 @@ def retrain_gbdt_on_train_data(engine):
         ).all()
         eligible = {row[0] for row in rows}
         user_ids = [uid for uid in gbdt_future_positives if uid in eligible]
+        if max_train_users > 0 and len(user_ids) > max_train_users:
+            rng = random.Random(42)
+            user_ids = rng.sample(user_ids, max_train_users)
+            print(f"  GBDT 训练用户上限生效: {max_train_users}")
         print(f"  GBDT 训练用户数: {len(user_ids)}")
 
         all_X, all_y = [], []
@@ -761,6 +1005,8 @@ def main():
     app = create_app()
     with app.app_context():
         cutoff_time, test_set, train_interacted, hidden_rows = temporal_split_mask()
+        temp_cold_user_ids = []
+        selected_cold_user_ids = []
         if not test_set:
             restore_behaviors(hidden_rows)
             print("测试集为空，请先生成数据")
@@ -780,6 +1026,23 @@ def main():
             total_domains = len(set(did for did in post_domain_map.values() if did is not None))
             print(f"帖子总数: {len(post_domain_map)}, 领域总数: {total_domains}")
 
+            cold_test_set, selected_cold_user_ids, temp_cold_user_ids = prepare_cold_start_eval_users(
+                TARGET_COLD_USER_COUNT,
+            )
+            if cold_test_set:
+                test_set.update(cold_test_set)
+                for user_id in cold_test_set:
+                    train_interacted.setdefault(user_id, set())
+                print(f"主评估纳入纯冷启动用户: {len(cold_test_set)}")
+            else:
+                print("未纳入额外纯冷启动用户")
+
+            test_set, train_interacted = maybe_limit_test_set(
+                test_set,
+                train_interacted,
+                protected_user_ids=selected_cold_user_ids,
+            )
+
             # 构建 baseline 所需数据结构（仅用 cutoff 前行为，即当前 DB 中全部行为）
             train_behaviors = db.session.scalars(db.select(UserBehavior)).all()
             post_popularity = Counter(b.post_id for b in train_behaviors)
@@ -789,8 +1052,13 @@ def main():
 
             engine = RecommendationEngine()
 
-            # 在训练期数据上重训 GBDT（解决 data leakage）
-            retrain_metrics = retrain_gbdt_on_train_data(engine)
+            # 可直接复用现有 GBDT 模型，避免长时间重训
+            if os.environ.get("EVAL_SKIP_GBDT_RETRAIN", "").lower() in {"1", "true", "yes"}:
+                retrain_metrics = None
+                print("\n--- 跳过 GBDT 重训，直接使用当前模型文件 ---")
+            else:
+                # 在训练期数据上重训 GBDT（解决 data leakage）
+                retrain_metrics = retrain_gbdt_on_train_data(engine)
 
             max_k = max(K_VALUES)
 
@@ -824,29 +1092,18 @@ def main():
                 test_set, K_VALUES, post_domain_map, total_domains,
             )
 
-            # ── 消融实验 ──
-            # 核心优化：每用户只召回一次，所有配置复用召回结果
-            print("\n--- 预缓存召回结果（每用户只召回一次） ---")
-            recall_cache = {}  # {user_id: results_map}
             user_ids = list(test_set.keys())
-            for i, user_id in enumerate(user_ids):
-                try:
-                    results_map = engine._parallel_recall(user_id, enable_llm=False)
-                    recall_cache[user_id] = results_map
-                except Exception as e:
-                    print(f"  user {user_id} recall error: {e}")
-                if (i + 1) % 50 == 0:
-                    print(f"  召回进度: {i + 1}/{len(user_ids)}")
-            print(f"  召回缓存完成: {len(recall_cache)} 用户")
+            recall_cache = build_recall_cache(engine, user_ids)
 
             print("\n--- 消融实验 ---")
             all_per_user = {}  # {config_name: {user_id: {k: metrics}}}
             for config_name, weights in ABLATION_CONFIGS.items():
                 print(f"评估: {config_name}")
+                route_key = get_enabled_routes(weights)
                 avg, per_user = evaluate_config(
                     config_name, weights, test_set, train_interacted,
                     K_VALUES, engine, post_domain_map, total_domains,
-                    recall_cache=recall_cache,
+                    recall_cache=recall_cache.get(route_key),
                 )
                 all_results[config_name] = avg
                 all_per_user[config_name] = per_user
@@ -856,11 +1113,18 @@ def main():
             # ── 分层分析 ──
             print_stratified_results(all_per_user, train_interacted, K_VALUES)
 
-            write_reports(all_results, K_VALUES, len(test_set), cutoff_time)
+            write_reports(
+                all_results,
+                K_VALUES,
+                len(test_set),
+                cutoff_time,
+                cold_user_count=len(selected_cold_user_ids),
+            )
             write_stratified_report(all_per_user, train_interacted, K_VALUES)
             print(f"\n报告已写入: {REPORT_DIR}")
 
         finally:
+            cleanup_temp_cold_users(temp_cold_user_ids)
             restore_behaviors(hidden_rows)
             # 恢复原始 GBDT 模型
             if original_model_backup is not None:
