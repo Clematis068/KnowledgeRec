@@ -42,9 +42,9 @@ MAX_LOGIC_PENALTY = 0.14
 
 class LogicConstraintEngine:
 
-    def recall(self, user_id, top_n=200, exclude_post_ids=None):
+    def recall(self, user_id, top_n=200, exclude_post_ids=None, user_behaviors=None):
         exclude_post_ids = exclude_post_ids or set()
-        profile = self._build_user_tag_profile(user_id)
+        profile = self._build_user_tag_profile(user_id, user_behaviors=user_behaviors)
         if not profile["engaged_tag_ids"]:
             return {}
 
@@ -107,7 +107,7 @@ class LogicConstraintEngine:
         adjusted.sort(key=lambda record: -record["final_score"])
         return adjusted
 
-    def _build_user_tag_profile(self, user_id):
+    def _build_user_tag_profile(self, user_id, user_behaviors=None):
         user = db.session.get(User, user_id)
         tag_strength = defaultdict(float)
         explicit_tag_ids = set()
@@ -116,15 +116,23 @@ class LogicConstraintEngine:
                 explicit_tag_ids.add(tag.id)
                 tag_strength[tag.id] += EXPLICIT_TAG_WEIGHT
 
-        behaviors = db.session.scalars(
-            db.select(UserBehavior)
-            .filter(
-                UserBehavior.user_id == user_id,
-                UserBehavior.behavior_type.in_(list(POSITIVE_BEHAVIORS)),
-            )
-            .order_by(UserBehavior.created_at.desc(), UserBehavior.id.desc())
-            .limit(RECENT_BEHAVIOR_LIMIT)
-        ).all()
+        if user_behaviors is not None:
+            # 从预加载的行为中筛选正向行为，按时间倒序取前 N 条
+            behaviors = sorted(
+                [b for b in user_behaviors if b.behavior_type in POSITIVE_BEHAVIORS],
+                key=lambda b: (b.created_at or datetime.min, b.id),
+                reverse=True,
+            )[:RECENT_BEHAVIOR_LIMIT]
+        else:
+            behaviors = db.session.scalars(
+                db.select(UserBehavior)
+                .filter(
+                    UserBehavior.user_id == user_id,
+                    UserBehavior.behavior_type.in_(list(POSITIVE_BEHAVIORS)),
+                )
+                .order_by(UserBehavior.created_at.desc(), UserBehavior.id.desc())
+                .limit(RECENT_BEHAVIOR_LIMIT)
+            ).all()
 
         now = datetime.now()
         for idx, behavior in enumerate(behaviors):

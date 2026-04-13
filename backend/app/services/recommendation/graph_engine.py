@@ -34,13 +34,17 @@ class GraphEngine:
                 WHEN 'BROWSED' THEN 0.3
              END}) AS seeds
 
+        // 标签传播 + 领域传播
         UNWIND seeds AS s
-        MATCH (sp:Post {id: s.pid})
-        MATCH (sp)-[:TAGGED_WITH]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post)
+        MATCH (sp:Post {id: s.pid})-[:TAGGED_WITH]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post)
         WHERE NOT candidate.id IN interacted_ids AND NOT candidate.id IN $exclude_ids
         WITH u, candidate, interacted_ids,
              sum(s.w * 0.35) AS tag_score,
              sum(CASE WHEN candidate.domain_id = sp.domain_id THEN s.w * 0.18 ELSE 0 END) AS domain_score
+
+        // 提前截断：按标签+领域分排序，只保留 top 候选进入社交阶段
+        ORDER BY tag_score + domain_score DESC
+        LIMIT $candidate_limit
 
         // 一阶社交：直接关注的朋友
         OPTIONAL MATCH (u)-[:FOLLOWS]->(f1:User)-[fr1:LIKED|FAVORITED]->(candidate)
@@ -67,7 +71,12 @@ class GraphEngine:
         ORDER BY raw_score DESC
         LIMIT $limit
         """
-        results = neo4j_service.run_query(cypher, {"uid": user_id, "limit": top_n, "exclude_ids": exclude_post_ids})
+        candidate_limit = top_n * 3  # 标签阶段保留 3 倍候选，社交阶段再精选
+        results = neo4j_service.run_query(cypher, {
+            "uid": user_id, "limit": top_n,
+            "candidate_limit": candidate_limit,
+            "exclude_ids": exclude_post_ids,
+        })
         scores = {r["post_id"]: r["raw_score"] for r in results}
         return min_max_normalize(scores)
 

@@ -1,5 +1,6 @@
 """Pipeline E: Swing 召回，补充小圈子共现信号。"""
 from collections import defaultdict
+from datetime import datetime, timedelta
 from itertools import combinations
 
 from app import db
@@ -7,7 +8,7 @@ from app.models.behavior import UserBehavior
 from app.services.redis_service import redis_service
 from app.utils.helpers import min_max_normalize
 
-from .cf_engine import CFEngine
+from .cf_engine import CFEngine, ONLINE_FALLBACK_DAYS
 
 SWING_ALPHA = 1.0
 SWING_MIN_COMMON_USERS = 3
@@ -56,11 +57,15 @@ class SwingEngine:
 
         print(f"  Swing相似度计算完成，共 {count} 个物品")
 
-    def recommend(self, user_id, candidate_ids=None, top_n=200, exclude_post_ids=None):
+    def recommend(self, user_id, candidate_ids=None, top_n=200, exclude_post_ids=None,
+                  user_behaviors=None):
         """在线推荐：为用户生成 Swing 得分。"""
         exclude_post_ids = exclude_post_ids or set()
-        stmt = db.select(UserBehavior).filter_by(user_id=user_id)
-        behaviors = db.session.scalars(stmt).all()
+        if user_behaviors is not None:
+            behaviors = user_behaviors
+        else:
+            stmt = db.select(UserBehavior).filter_by(user_id=user_id)
+            behaviors = db.session.scalars(stmt).all()
         if not behaviors:
             return {}
 
@@ -100,7 +105,10 @@ class SwingEngine:
 
     def _recommend_online(self, user_ratings, candidate_ids=None, top_n=200, exclude_post_ids=None):
         exclude_post_ids = exclude_post_ids or set()
-        behaviors = db.session.scalars(db.select(UserBehavior)).all()
+        cutoff = datetime.now() - timedelta(days=ONLINE_FALLBACK_DAYS)
+        behaviors = db.session.scalars(
+            db.select(UserBehavior).filter(UserBehavior.created_at >= cutoff)
+        ).all()
         user_items, item_users = self.cf_engine._build_interaction_matrices(behaviors)
         item_sets = {
             user_id: set(items.keys())

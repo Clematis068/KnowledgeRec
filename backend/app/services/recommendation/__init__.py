@@ -448,16 +448,24 @@ class RecommendationEngine:
             exclude_post_ids = set(db.session.scalars(stmt).all())
         self._last_exclude_post_ids = exclude_post_ids
 
+        # ── 预加载用户行为，供 CF / Swing / Knowledge 共享，避免重复 DB 查询 ──
+        user_behaviors = db.session.scalars(
+            db.select(UserBehavior).filter_by(user_id=user_id)
+        ).all()
+
         pipeline_factories = {
-            'cf':        lambda: self.cf.recommend(user_id, exclude_post_ids=exclude_post_ids),
-            'swing':     lambda: self.swing.recommend(user_id, exclude_post_ids=exclude_post_ids) if enable_swing else {},
+            'cf':        lambda: self.cf.recommend(user_id, exclude_post_ids=exclude_post_ids,
+                                                   user_behaviors=user_behaviors),
+            'swing':     lambda: self.swing.recommend(user_id, exclude_post_ids=exclude_post_ids,
+                                                      user_behaviors=user_behaviors) if enable_swing else {},
             'graph':     lambda: self.graph.recommend(user_id, exclude_post_ids=exclude_post_ids),
             'semantic':  lambda: self.semantic.recommend(user_id, enable_llm_rerank=enable_llm, exclude_post_ids=exclude_post_ids),
             'hot':       lambda: self.hot.recommend(
                 user_id, exclude_post_ids=exclude_post_ids,
                 exclude_author_ids=blocked_author_ids, exclude_domain_ids=blocked_domain_ids,
             ) if enable_hot else {},
-            'knowledge': lambda: self.logic.recall(user_id, exclude_post_ids=exclude_post_ids),
+            'knowledge': lambda: self.logic.recall(user_id, exclude_post_ids=exclude_post_ids,
+                                                   user_behaviors=user_behaviors),
         }
         results_map = {name: {} for name in RECALL_ROUTE_NAMES}
         recall_stats = {

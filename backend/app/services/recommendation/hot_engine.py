@@ -2,6 +2,8 @@
 import math
 from datetime import datetime, timedelta
 
+from sqlalchemy.orm import joinedload
+
 from app import db
 from app.models.behavior import UserBehavior
 from app.models.post import Post
@@ -19,7 +21,7 @@ class HotEngine:
         exclude_post_ids = exclude_post_ids or set()
         exclude_author_ids = exclude_author_ids or set()
         exclude_domain_ids = exclude_domain_ids or set()
-        stmt = db.select(Post)
+        stmt = db.select(Post).options(joinedload(Post.tags))
         if candidate_ids:
             stmt = stmt.filter(Post.id.in_(candidate_ids))
         if exclude_post_ids:
@@ -30,9 +32,9 @@ class HotEngine:
             stmt = stmt.filter(~Post.domain_id.in_(exclude_domain_ids))
 
         cutoff = datetime.now() - timedelta(days=self.RECENT_WINDOW_DAYS)
-        posts = db.session.scalars(stmt.filter(Post.created_at >= cutoff)).all()
+        posts = db.session.scalars(stmt.filter(Post.created_at >= cutoff)).unique().all()
         if not posts:
-            posts = db.session.scalars(stmt).all()
+            posts = db.session.scalars(stmt).unique().all()
         if not posts:
             return {}
 

@@ -1,7 +1,7 @@
 """Pipeline A: 基于物品的协同过滤 (Item-Based CF + IUF加权 + 时间衰减)"""
 import math
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app import db
 from app.models.behavior import UserBehavior
@@ -18,6 +18,7 @@ BEHAVIOR_WEIGHTS = {
 TIME_DECAY_LAMBDA = 0.03
 
 ITEM_SIM_TTL = 30 * 86400
+ONLINE_FALLBACK_DAYS = 90  # 在线回退只取近 N 天行为，避免全表扫描
 
 
 class CFEngine:
@@ -61,14 +62,19 @@ class CFEngine:
 
         print(f"  物品相似度计算完成，共 {count} 个物品")
 
-    def recommend(self, user_id, candidate_ids=None, top_n=200, exclude_post_ids=None):
+    def recommend(self, user_id, candidate_ids=None, top_n=200, exclude_post_ids=None,
+                  user_behaviors=None):
         """
         在线推荐：为用户生成 CF 得分
         返回 {post_id: normalized_score}
+        user_behaviors: 可选预加载的用户行为列表，避免重复 DB 查询
         """
         exclude_post_ids = exclude_post_ids or set()
-        stmt = db.select(UserBehavior).filter_by(user_id=user_id)
-        behaviors = db.session.scalars(stmt).all()
+        if user_behaviors is not None:
+            behaviors = user_behaviors
+        else:
+            stmt = db.select(UserBehavior).filter_by(user_id=user_id)
+            behaviors = db.session.scalars(stmt).all()
         if not behaviors:
             return {}
 
@@ -132,7 +138,10 @@ class CFEngine:
 
     def _recommend_online(self, user_ratings, candidate_ids=None, top_n=200, exclude_post_ids=None):
         exclude_post_ids = exclude_post_ids or set()
-        behaviors = db.session.scalars(db.select(UserBehavior)).all()
+        cutoff = datetime.now() - timedelta(days=ONLINE_FALLBACK_DAYS)
+        behaviors = db.session.scalars(
+            db.select(UserBehavior).filter(UserBehavior.created_at >= cutoff)
+        ).all()
         user_items, item_users = self._build_interaction_matrices(behaviors)
 
         interacted = set(user_ratings.keys())
