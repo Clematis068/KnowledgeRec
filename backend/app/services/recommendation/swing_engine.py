@@ -1,4 +1,5 @@
 """Pipeline E: Swing 召回，补充小圈子共现信号。"""
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta
 from itertools import combinations
@@ -11,7 +12,7 @@ from app.utils.helpers import min_max_normalize
 from .cf_engine import CFEngine, ONLINE_FALLBACK_DAYS
 
 SWING_ALPHA = 1.0
-SWING_MIN_COMMON_USERS = 3
+SWING_MIN_COMMON_USERS = 2   # 原 3 对 ≤千级用户数据集过严，过滤后矩阵过稀疏
 SWING_SIM_TTL = 30 * 86400
 SWING_TOP_K = 50
 
@@ -98,10 +99,8 @@ class SwingEngine:
             ranked = dict(sorted(scores.items(), key=lambda item: -item[1])[:top_n])
             return min_max_normalize(ranked)
 
-        if cache_hits == 0:
-            return self._recommend_online(user_ratings, candidate_ids, top_n, exclude_post_ids)
-
-        return {}
+        # 统一回退：缓存空 或 命中但全被 skip 时都走在线计算
+        return self._recommend_online(user_ratings, candidate_ids, top_n, exclude_post_ids)
 
     def _recommend_online(self, user_ratings, candidate_ids=None, top_n=200, exclude_post_ids=None):
         exclude_post_ids = exclude_post_ids or set()
@@ -140,12 +139,21 @@ class SwingEngine:
         return min_max_normalize(ranked)
 
     def _compute_pair_swing(self, item_i, item_j, item_users, item_sets):
+        """Swing with sqrt-normalization:
+            score = [ Σ_{u,v ∈ U_i ∩ U_j} 1/(α + |I_u ∩ I_v|) ] / sqrt(|U_i ∩ U_j|)
+
+        sqrt 平滑在保留热门信号与抑制热门垄断之间取平衡：
+        - 原 `/ n` 线性压制过强，热门物品被系统性低估
+        - 标准 Swing 不除，热门 common_users 多 → pair 数平方增长 → 垄断榜单
+        - sqrt(n) 与 cosine 的 sqrt(|Ui|·|Uj|) 同源，是共现打分的经典归一化
+        """
         common_users = list(item_users[item_i] & item_users[item_j])
-        if len(common_users) < SWING_MIN_COMMON_USERS:
+        n_common = len(common_users)
+        if n_common < SWING_MIN_COMMON_USERS:
             return 0.0
 
         score = 0.0
         for user_left, user_right in combinations(common_users, 2):
             overlap_count = len(item_sets[user_left] & item_sets[user_right])
             score += 1.0 / (SWING_ALPHA + overlap_count)
-        return score / len(common_users)
+        return score / math.sqrt(n_common)

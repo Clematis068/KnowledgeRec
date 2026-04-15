@@ -78,10 +78,12 @@ class CFEngine:
         if not behaviors:
             return {}
 
-        user_ratings = {}
+        # 同一 (user, post) 上多次行为累加（如既 like 又 favorite），
+        # 比 max 更能体现强交互；用 clip 防止极端值主导
+        user_ratings = defaultdict(float)
         for b in behaviors:
-            score = self._behavior_score(b)
-            user_ratings[b.post_id] = max(user_ratings.get(b.post_id, 0), score)
+            user_ratings[b.post_id] += self._behavior_score(b)
+        user_ratings = {pid: min(s, 15.0) for pid, s in user_ratings.items()}
 
         interacted = set(user_ratings.keys())
         skip = interacted | exclude_post_ids
@@ -104,13 +106,11 @@ class CFEngine:
                 scores[sim_item] += sim_score * rating
 
         if scores:
-            return min_max_normalize(dict(scores))
+            ranked = dict(sorted(scores.items(), key=lambda x: -x[1])[:top_n])
+            return min_max_normalize(ranked)
 
-        # Redis 中还没有离线相似度缓存时，回退到在线共现计算，避免 CF 分支长期为 0
-        if cache_hits == 0:
-            return self._recommend_online(user_ratings, candidate_ids, top_n, exclude_post_ids)
-
-        return min_max_normalize(dict(scores))
+        # 缓存为空 或 命中缓存但全被 skip → 统一回退到在线共现计算，避免返空
+        return self._recommend_online(user_ratings, candidate_ids, top_n, exclude_post_ids)
 
     def _behavior_score(self, behavior):
         if behavior.behavior_type == 'browse':

@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime
 
 from sqlalchemy import or_
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.models.behavior import UserBehavior
@@ -134,9 +135,22 @@ class LogicConstraintEngine:
                 .limit(RECENT_BEHAVIOR_LIMIT)
             ).all()
 
+        # 批量预加载 post + tags，消除 behavior 循环里的 N+1
         now = datetime.now()
+        post_ids = list({b.post_id for b in behaviors})
+        post_map = {}
+        if post_ids:
+            post_map = {
+                p.id: p
+                for p in db.session.scalars(
+                    db.select(Post)
+                    .filter(Post.id.in_(post_ids))
+                    .options(selectinload(Post.tags))
+                ).all()
+            }
+
         for idx, behavior in enumerate(behaviors):
-            post = db.session.get(Post, behavior.post_id)
+            post = post_map.get(behavior.post_id)
             if not post or not post.tags:
                 continue
 
@@ -220,10 +234,12 @@ class LogicConstraintEngine:
         if not tag_ids:
             return {}
 
+        # selectinload(Post.tags) 避免后面 for tag in post.tags 时 N+1
         posts = db.session.scalars(
             db.select(Post)
             .join(Post.tags)
             .filter(Tag.id.in_(tag_ids))
+            .options(selectinload(Post.tags))
         ).unique().all()
 
         post_scores = defaultdict(float)

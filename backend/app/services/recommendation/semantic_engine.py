@@ -1,5 +1,6 @@
 """Pipeline C: LLM 语义增强推荐 (Embedding + LLM Reranking)"""
 import logging
+import re
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -92,22 +93,28 @@ class SemanticEngine:
 
         # Stage 2: LLM 对 Top-50 候选重排序
         top_candidates = sorted(embedding_scores.items(), key=lambda x: -x[1])[:50]
-        llm_scores = {}
+        top_ids = [pid for pid, _ in top_candidates]
 
+        # 批量查询，避免 N+1
+        post_map = {
+            p.id: p
+            for p in db.session.scalars(db.select(Post).filter(Post.id.in_(top_ids))).all()
+        }
+
+        llm_combined = {}
         for post_id, emb_score in top_candidates:
-            post = db.session.get(Post, post_id)
+            post = post_map.get(post_id)
+            if not post:
+                continue
             llm_score = self._llm_relevance_score(user, post)
-            llm_scores[post_id] = 0.6 * emb_score + 0.4 * llm_score
+            # emb_score 已 min-max 到 [0,1]，llm_score 也在 [0,1]，量级对齐
+            llm_combined[post_id] = 0.6 * emb_score + 0.4 * llm_score
 
-        # 合并: LLM重排的用组合分，其余只用Embedding分(打折)
-        final = {}
-        for post_id, emb_score in embedding_scores.items():
-            if post_id in llm_scores:
-                final[post_id] = llm_scores[post_id]
-            else:
-                final[post_id] = emb_score * 0.6
+        # 合并：Top-50 用 LLM 组合分，其余保留原 embedding 分（不再打折，避免双分布错位）
+        final = dict(embedding_scores)
+        final.update(llm_combined)
 
-        return min_max_normalize(dict(sorted(final.items(), key=lambda x: -x[1])[:top_n]))
+        return dict(sorted(final.items(), key=lambda x: -x[1])[:top_n])
 
     def _llm_relevance_score(self, user, post):
         """调用千问为用户-帖子匹配打分 (0-10)"""
@@ -126,9 +133,14 @@ class SemanticEngine:
 
         try:
             result = qwen_service.chat(prompt)
-            score = int(result.strip()) / 10.0
-            score = max(0.0, min(1.0, score))
-        except (ValueError, Exception):
+            # LLM 可能返回 "评分：8"、"8分" 之类，正则提第一个数字
+            m = re.search(r'\d+(?:\.\d+)?', result or '')
+            if m:
+                score = float(m.group(0)) / 10.0
+                score = max(0.0, min(1.0, score))
+            else:
+                score = 0.5
+        except Exception:
             score = 0.5
 
         redis_service.set_json(cache_key, score, ttl=3600)
@@ -244,11 +256,18 @@ class SemanticEngine:
             .limit(LONG_TERM_LIMIT)
         ).all()
 
+        # 批量加载帖子，避免 N+1
+        post_ids = list({b.post_id for b in behaviors})
+        post_map = {
+            p.id: p
+            for p in db.session.scalars(db.select(Post).filter(Post.id.in_(post_ids))).all()
+        }
+
         embeddings = []
         weights = []
         now = datetime.now()
         for idx, b in enumerate(behaviors):
-            post = db.session.get(Post, b.post_id)
+            post = post_map.get(b.post_id)
             if not post or not post.content_embedding:
                 continue
             w = BEHAVIOR_PROFILE_WEIGHTS.get(b.behavior_type, 1.0)
@@ -290,10 +309,17 @@ class SemanticEngine:
         if not behaviors:
             return None
 
+        # 批量加载帖子，避免 N+1
+        post_ids = list({b.post_id for b in behaviors})
+        post_map = {
+            p.id: p
+            for p in db.session.scalars(db.select(Post).filter(Post.id.in_(post_ids))).all()
+        }
+
         embeddings = []
         weights = []
         for idx, behavior in enumerate(behaviors):
-            post = db.session.get(Post, behavior.post_id)
+            post = post_map.get(behavior.post_id)
             if not post or not post.content_embedding:
                 continue
 
