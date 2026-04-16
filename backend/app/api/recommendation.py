@@ -28,6 +28,7 @@ def _attach_post_snapshot(item, post):
     item.update({
         'title': post_data.get('title'),
         'summary': post_data.get('summary'),
+        'image_url': post_data.get('image_url'),
         'author_id': post_data.get('author_id'),
         'author_name': post_data.get('author_name'),
         'domain_id': post_data.get('domain_id'),

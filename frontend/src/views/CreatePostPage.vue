@@ -1,4 +1,5 @@
 <script setup>
+import { Plus } from '@element-plus/icons-vue'
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
@@ -12,17 +13,32 @@ const { domains, fetchDomains } = useDomains()
 const formRef = ref()
 const submitting = ref(false)
 const createdPostId = ref(null)
+const uploadHeaders = { Authorization: `Bearer ${localStorage.getItem('token')}` }
 
 const form = ref({
   title: '',
   domain_id: null,
   content: '',
+  image_url: '',
 })
 
 const rules = {
   title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
   domain_id: [{ required: true, message: '请选择领域', trigger: 'change' }],
   content: [{ required: true, message: '请输入正文', trigger: 'blur' }],
+}
+
+function handleUploadSuccess(res) {
+  form.value.image_url = res.url
+  ElMessage.success('封面上传成功')
+}
+
+function beforeUpload(file) {
+  const isLt5M = file.size / 1024 / 1024 < 5
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB')
+  }
+  return isLt5M
 }
 
 watch(
@@ -63,6 +79,22 @@ onMounted(fetchDomains)
       :rules="rules"
       label-position="top"
     >
+      <el-form-item label="封面图片">
+        <el-upload
+          class="cover-uploader"
+          action="/api/upload/image"
+          :show-file-list="false"
+          :on-success="handleUploadSuccess"
+          :before-upload="beforeUpload"
+          name="file"
+          :headers="uploadHeaders"
+        >
+          <img v-if="form.image_url" :src="form.image_url" class="cover-preview" />
+          <el-icon v-else class="cover-uploader-icon"><Plus /></el-icon>
+        </el-upload>
+        <div class="upload-tip">建议尺寸 800x450，支持 jpg/png，小于 5MB</div>
+      </el-form-item>
+
       <el-form-item label="标题" prop="title">
         <el-input v-model="form.title" placeholder="请输入帖子标题" maxlength="200" show-word-limit />
       </el-form-item>
@@ -109,8 +141,41 @@ onMounted(fetchDomains)
 .create-post-page :deep(.el-form) {
   padding: 24px;
   border: 1px solid var(--kr-border);
-  border-radius: 30px;
+  border-radius: 0; /* Follow Carbon Design */
   background: var(--kr-surface);
-  box-shadow: var(--kr-shadow-clay-soft);
+}
+
+.cover-uploader :deep(.el-upload) {
+  border: 1px dashed var(--cds-border-subtle);
+  background: var(--cds-layer-01);
+  width: 240px;
+  height: 135px;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s;
+}
+
+.cover-uploader :deep(.el-upload):hover {
+  border-color: var(--cds-link-primary);
+}
+
+.cover-uploader-icon {
+  font-size: 28px;
+  color: var(--cds-text-muted);
+}
+
+.cover-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: var(--cds-text-muted);
+  margin-top: 8px;
 }
 </style>
