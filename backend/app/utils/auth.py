@@ -52,6 +52,20 @@ def login_required(f):
     return wrapper
 
 
+def admin_required(f):
+    """管理员权限装饰器"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        user = _get_current_user()
+        if not user:
+            return jsonify({'error': '请先登录'}), 401
+        if getattr(user, 'role', 'user') != 'admin':
+            return jsonify({'error': '需要管理员权限'}), 403
+        g.current_user = user
+        return f(*args, **kwargs)
+    return wrapper
+
+
 def optional_login(f):
     """可选登录装饰器，未登录时 g.current_user = None"""
     @wraps(f)

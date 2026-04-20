@@ -61,6 +61,47 @@ REPORT_DIR = os.environ.get(
 )
 
 
+# ─── 权重敏感性扫描配置 ───
+# 基于 active 阶段权重做单参数扰动（OAT, one-at-a-time），
+# 对每路扫描 [0.0, 0.6] 共 13 个点，其他 5 路按当前默认值的比例缩放至和 = 1。
+# 复用 Full_Fusion 的 6 路 recall_cache（融合阶段直接忽略权重为 0 的通道）。
+SENSITIVITY_DEFAULT_WEIGHTS = {
+    'cf': 0.28, 'swing': 0.08, 'graph': 0.22,
+    'semantic': 0.20, 'knowledge': 0.12, 'hot': 0.10,
+}
+SENSITIVITY_SWEEP_VALUES = [round(x * 0.05, 2) for x in range(13)]  # 0.00 ~ 0.60
+SENSITIVITY_ROUTES = ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot')
+
+
+def build_sensitivity_configs(default_weights=None, sweep_values=None, routes=None):
+    """生成单参数敏感性扫描配置。
+
+    返回: [(config_name, swept_route, swept_value, weights_dict), ...]
+    """
+    default_weights = default_weights or SENSITIVITY_DEFAULT_WEIGHTS
+    sweep_values = sweep_values or SENSITIVITY_SWEEP_VALUES
+    routes = routes or SENSITIVITY_ROUTES
+
+    configs = []
+    for swept_route in routes:
+        others = [r for r in routes if r != swept_route]
+        others_sum = sum(default_weights[r] for r in others)
+        # 确保默认值也是采样点之一，便于报告/图表标注 "默认"
+        default_w = round(default_weights[swept_route], 2)
+        local_values = sorted(set(sweep_values) | {default_w})
+        for w in local_values:
+            remain = max(1.0 - w, 0.0)
+            if others_sum > 1e-9 and remain > 1e-9:
+                scale = remain / others_sum
+                weights = {r: round(default_weights[r] * scale, 6) for r in others}
+            else:
+                weights = {r: 0.0 for r in others}
+            weights[swept_route] = w
+            name = f"sweep[{swept_route}={w:.2f}]"
+            configs.append((name, swept_route, w, weights))
+    return configs
+
+
 # ─── Baseline 推荐方法 ───
 
 def baseline_random(user_id, all_post_ids, interacted_ids, top_n):
@@ -384,31 +425,39 @@ def get_enabled_routes(weights):
 def build_recall_cache(engine, user_ids):
     route_sets = sorted({get_enabled_routes(weights) for weights in ABLATION_CONFIGS.values()})
     recall_cache = {routes: {} for routes in route_sets}
-    single_route_cache = {}
+    all_routes = ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot')
+    single_route_cache = {route: {} for route in all_routes}
 
-    print("\n--- 预缓存召回结果（按单路缓存后组合） ---")
-    for route in ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot'):
-        print(f"  单路召回: {route}")
-        route_cache = {}
-        for i, user_id in enumerate(user_ids):
-            try:
-                route_cache[user_id] = engine._parallel_recall(
-                    user_id,
-                    enable_llm=False,
-                    enabled_routes=(route,),
-                )
-            except Exception as e:
-                print(f"    user {user_id} recall error: {e}")
-            if (i + 1) % 50 == 0:
-                print(f"    召回进度: {i + 1}/{len(user_ids)}")
-        print(f"    缓存完成: {len(route_cache)} 用户")
-        single_route_cache[route] = route_cache
+    # 原实现：6 次外层 × N 次内层 = 6N 次 _parallel_recall(enabled_routes=(one,))，
+    # 每次都重复加载 user_behaviors、查黑名单、启动线程池，仅跑 1 路。
+    # 新实现：每个用户只调用 1 次 _parallel_recall（全 6 路并行），
+    # 返回的 full_map 按 route 拆回 single_route_cache 即可，后续组合逻辑无需调整。
+    print(f"\n--- 预缓存召回结果（每用户 1 次全 6 路并行调用，共 {len(user_ids)} 次） ---")
+    for i, user_id in enumerate(user_ids):
+        try:
+            full_map = engine._parallel_recall(
+                user_id,
+                enable_llm=False,
+                enabled_routes=all_routes,
+            )
+        except Exception as e:
+            print(f"    user {user_id} recall error: {e}")
+            full_map = {route: {} for route in all_routes}
+
+        # 保持原 single_route_cache 的数据结构：{route: {user_id: {route: scores}}}
+        for route in all_routes:
+            single_route_cache[route][user_id] = {route: full_map.get(route, {})}
+
+        if (i + 1) % 50 == 0:
+            print(f"    召回进度: {i + 1}/{len(user_ids)}")
+    for route in all_routes:
+        print(f"    {route}: {len(single_route_cache[route])} 用户")
 
     print("  组合配置缓存...")
     for routes in route_sets:
         cache = recall_cache[routes]
         for user_id in user_ids:
-            merged = {name: {} for name in ('cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot')}
+            merged = {name: {} for name in all_routes}
             for route in routes:
                 route_result = single_route_cache.get(route, {}).get(user_id)
                 if route_result:
@@ -781,6 +830,180 @@ def write_stratified_report(all_per_user, train_interacted, k_values):
     print(f"分层分析已写入: {csv_path}")
 
 
+def run_weight_sensitivity_sweep(engine, test_set, train_interacted, k_values,
+                                 post_domain_map, total_domains, recall_cache):
+    """对 active 阶段权重做单参数扫描，复用 6 路 recall_cache。
+
+    返回 [(config_name, swept_route, swept_value, weights, avg_metrics), ...]
+    """
+    full_route_key = tuple(name for name, value in SENSITIVITY_DEFAULT_WEIGHTS.items() if value > 0)
+    cache_for_full = recall_cache.get(full_route_key)
+    if cache_for_full is None:
+        # 退化：没找到精确 key，挑一个用户数最多的缓存兜底
+        cache_for_full = max(recall_cache.values(), key=lambda c: len(c)) if recall_cache else None
+
+    sweep_configs = build_sensitivity_configs()
+    print(f"\n--- 权重敏感性扫描（{len(sweep_configs)} 配置；6 路 × {len(SENSITIVITY_SWEEP_VALUES)} 点） ---")
+    print(f"  默认权重: {SENSITIVITY_DEFAULT_WEIGHTS}")
+
+    results = []
+    for idx, (config_name, swept_route, swept_value, weights) in enumerate(sweep_configs):
+        avg, _ = evaluate_config(
+            config_name, weights, test_set, train_interacted,
+            k_values, engine, post_domain_map, total_domains,
+            recall_cache=cache_for_full,
+        )
+        results.append((config_name, swept_route, swept_value, weights, avg))
+        if (idx + 1) % 10 == 0:
+            print(f"  扫描进度: {idx + 1}/{len(sweep_configs)}")
+    return results
+
+
+def write_sensitivity_report(sweep_results, k_values):
+    """输出权重敏感性 CSV + Markdown 报告 + 曲线图。"""
+    os.makedirs(REPORT_DIR, exist_ok=True)
+
+    csv_header = ["swept_route", "swept_value", "k",
+                  "precision", "recall", "ndcg", "hitrate",
+                  "coverage", "entropy", "ils"]
+    rows = []
+    for _name, route, value, _weights, avg in sweep_results:
+        for k in k_values:
+            m = avg[k]
+            rows.append([
+                route, value, k,
+                round(m['precision'], 6),
+                round(m['recall'], 6),
+                round(m['ndcg'], 6),
+                round(m['hitrate'], 6),
+                round(m['coverage'], 6),
+                round(m['entropy'], 6),
+                round(m['ils'], 6),
+            ])
+    csv_path = os.path.join(REPORT_DIR, "weight_sensitivity_metrics.csv")
+    write_csv(csv_path, csv_header, rows)
+    print(f"\n权重敏感性 CSV 已写入: {csv_path}")
+
+    # 按路聚合：{route: [(value, avg), ...]}
+    grouped = defaultdict(list)
+    for _name, route, value, _weights, avg in sweep_results:
+        grouped[route].append((value, avg))
+    for route in grouped:
+        grouped[route].sort(key=lambda x: x[0])
+
+    # Markdown 报告：每路一节
+    lines = [
+        "# 权重敏感性分析报告",
+        "",
+        f"- 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"- 基线（active 阶段默认权重）：`{SENSITIVITY_DEFAULT_WEIGHTS}`",
+        f"- 扫描方法：单参数 OAT，每路扫描 {SENSITIVITY_SWEEP_VALUES}，"
+        "其余 5 路按默认值比例缩放至和 = 1",
+        f"- K 值：{k_values}",
+        "",
+        "## 各路权重对核心指标 (P@5 / NDCG@10 / HR@10) 的影响",
+        "",
+    ]
+    for route in SENSITIVITY_ROUTES:
+        if route not in grouped:
+            continue
+        default_w = SENSITIVITY_DEFAULT_WEIGHTS[route]
+        lines.append(f"### {route}（默认 {default_w:.2f}）")
+        lines.append("")
+        rows_md = []
+        # 找峰值（用 NDCG@10）
+        ndcg10_series = [(v, avg[10]['ndcg']) for v, avg in grouped[route]]
+        peak_value, peak_ndcg = max(ndcg10_series, key=lambda x: x[1])
+        for v, avg in grouped[route]:
+            mark = ""
+            if abs(v - default_w) < 1e-6:
+                mark += " ← 默认"
+            if abs(v - peak_value) < 1e-6:
+                mark += " ★ 峰值"
+            rows_md.append([
+                f"{v:.2f}{mark}",
+                f"{avg[5]['precision']:.4f}",
+                f"{avg[10]['ndcg']:.4f}",
+                f"{avg[10]['hitrate']:.4f}",
+                f"{avg[20]['recall']:.4f}",
+            ])
+        lines.append(markdown_table(
+            ["权重", "P@5", "NDCG@10", "HR@10", "R@20"], rows_md,
+        ))
+        default_ndcg = next((avg[10]['ndcg'] for v, avg in grouped[route]
+                             if abs(v - default_w) < 1e-6), None)
+        if default_ndcg is not None:
+            delta = peak_ndcg - default_ndcg
+            lines.append(
+                f"- **结论**：NDCG@10 峰值 {peak_ndcg:.4f} @ w={peak_value:.2f}；"
+                f"默认 w={default_w:.2f} 处 NDCG@10={default_ndcg:.4f}（差距 {delta:+.4f}）。"
+            )
+            lines.append("")
+
+    md_path = os.path.join(REPORT_DIR, "weight_sensitivity_report.md")
+    with open(md_path, "w", encoding="utf-8") as fp:
+        fp.write("\n".join(lines))
+    print(f"权重敏感性报告已写入: {md_path}")
+
+    # 曲线图
+    try:
+        plot_sensitivity_curves(grouped)
+    except Exception as e:
+        print(f"绘图失败（不影响主流程）: {e}")
+
+
+def plot_sensitivity_curves(grouped):
+    """6 子图（2x3），每路一张：x=权重值，y=P@5/NDCG@10/HR@10 三条曲线。"""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'PingFang SC',
+                                        'Heiti TC', 'DejaVu Sans']
+    plt.rcParams['axes.unicode_minus'] = False
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8.5), sharex=True)
+    axes = axes.flatten()
+
+    for ax, route in zip(axes, SENSITIVITY_ROUTES):
+        if route not in grouped:
+            ax.set_visible(False)
+            continue
+        series = grouped[route]
+        xs = [v for v, _ in series]
+        p5 = [avg[5]['precision'] for _, avg in series]
+        ndcg10 = [avg[10]['ndcg'] for _, avg in series]
+        hr10 = [avg[10]['hitrate'] for _, avg in series]
+
+        ax.plot(xs, p5, marker='o', label='P@5', color='#3b82f6')
+        ax.plot(xs, ndcg10, marker='s', label='NDCG@10', color='#ef4444')
+        ax.plot(xs, hr10, marker='^', label='HR@10', color='#10b981')
+
+        # 默认值竖线
+        default_w = SENSITIVITY_DEFAULT_WEIGHTS[route]
+        ax.axvline(default_w, color='gray', linestyle='--', alpha=0.7,
+                   label=f'default={default_w:.2f}')
+        # NDCG@10 峰值
+        peak_idx = max(range(len(ndcg10)), key=lambda i: ndcg10[i])
+        ax.scatter([xs[peak_idx]], [ndcg10[peak_idx]],
+                   marker='*', s=220, color='#f59e0b',
+                   zorder=5, label=f'peak NDCG@10={ndcg10[peak_idx]:.3f}')
+
+        ax.set_title(f'{route}  (default={default_w:.2f})', fontsize=12, fontweight='bold')
+        ax.set_xlabel('weight')
+        ax.set_ylabel('metric')
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='best', fontsize=8)
+
+    fig.suptitle('Weight Sensitivity Sweep (active stage, OAT)',
+                 fontsize=14, fontweight='bold', y=0.995)
+    fig.tight_layout()
+    png_path = os.path.join(REPORT_DIR, "weight_sensitivity_curves.png")
+    fig.savefig(png_path, dpi=140, bbox_inches='tight')
+    plt.close(fig)
+    print(f"权重敏感性曲线图已写入: {png_path}")
+
+
 def print_results(all_results, k_values):
     print("\n" + "=" * 140)
     print(f"{'配置':<20}", end="")
@@ -905,6 +1128,10 @@ def retrain_gbdt_on_train_data(engine):
     print(f"  内层屏蔽 {inner_deleted} 条，有未来正样本用户: {len(gbdt_future_positives)}")
 
     try:
+        # 内层 mask 后重算相似度，避免 GBDT 训练使用泄漏数据
+        print("  重新预计算 CF/Swing 相似度（内层训练期）...")
+        engine.precompute()
+
         extractor = FeatureExtractor()
         ranker = GBDTRanker()
 
@@ -998,6 +1225,9 @@ def retrain_gbdt_on_train_data(engine):
             db.session.commit()
             restored = db.session.scalar(db.select(db.func.count()).select_from(UserBehavior))
             print(f"  内层恢复完成，当前行为数: {restored}")
+            # 恢复后重算相似度，让外层评估使用完整训练期数据
+            print("  重新预计算 CF/Swing 相似度（恢复到外层训练期）...")
+            engine.precompute()
 
 
 def main():
@@ -1052,6 +1282,10 @@ def main():
 
             engine = RecommendationEngine()
 
+            # 修复 data leakage: 在屏蔽测试期行为后，基于训练期数据重算相似度
+            print("\n重新预计算 CF/Swing 相似度（基于训练期数据）...")
+            engine.precompute()
+
             # 可直接复用现有 GBDT 模型，避免长时间重训
             if os.environ.get("EVAL_SKIP_GBDT_RETRAIN", "").lower() in {"1", "true", "yes"}:
                 retrain_metrics = None
@@ -1093,6 +1327,14 @@ def main():
             )
 
             user_ids = list(test_set.keys())
+
+            # 预加载用户级缓存（user_stage / dislike 信息），跨 18 配置复用
+            print("\n--- 预加载用户级评估缓存（stage + dislike） ---")
+            import time as _time
+            _t0 = _time.time()
+            engine.warm_evaluation_cache(user_ids)
+            print(f"  warm_evaluation_cache: {len(user_ids)} 用户, 耗时 {(_time.time() - _t0) * 1000:.0f}ms")
+
             recall_cache = build_recall_cache(engine, user_ids)
 
             print("\n--- 消融实验 ---")
@@ -1121,9 +1363,18 @@ def main():
                 cold_user_count=len(selected_cold_user_ids),
             )
             write_stratified_report(all_per_user, train_interacted, K_VALUES)
+
+            # ── 权重敏感性扫描 ──
+            sweep_results = run_weight_sensitivity_sweep(
+                engine, test_set, train_interacted, K_VALUES,
+                post_domain_map, total_domains, recall_cache,
+            )
+            write_sensitivity_report(sweep_results, K_VALUES)
+
             print(f"\n报告已写入: {REPORT_DIR}")
 
         finally:
+            engine.clear_evaluation_cache()
             cleanup_temp_cold_users(temp_cold_user_ids)
             restore_behaviors(hidden_rows)
             # 恢复原始 GBDT 模型

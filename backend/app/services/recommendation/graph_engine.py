@@ -8,15 +8,22 @@ class GraphEngine:
     def recommend(self, user_id, top_n=200, exclude_post_ids=None):
         """
         基于 Neo4j 知识图谱的多跳传播推荐
-        冷启动回退: 无行为时用兴趣标签匹配帖子
+        三路合并: 标签传播 + 纯社交召回 + 冷启动回退
         返回 {post_id: normalized_score}
         """
         exclude_post_ids = list(exclude_post_ids or [])
         try:
-            scores = self._behavior_based(user_id, top_n, exclude_post_ids)
-            if scores:
-                return scores
-            return self._tag_based_fallback(user_id, top_n, exclude_post_ids)
+            tag_scores = self._behavior_based(user_id, top_n, exclude_post_ids)
+            social_scores = self._social_recall(user_id, top_n, exclude_post_ids)
+
+            if not tag_scores and not social_scores:
+                return self._tag_based_fallback(user_id, top_n, exclude_post_ids)
+
+            merged = dict(tag_scores)
+            for pid, score in social_scores.items():
+                merged[pid] = merged.get(pid, 0) + score
+            ranked = dict(sorted(merged.items(), key=lambda x: -x[1])[:top_n])
+            return min_max_normalize(ranked)
         except Exception as e:
             print(f"[GraphEngine] Neo4j查询失败: {e}")
             return {}
@@ -80,6 +87,45 @@ class GraphEngine:
         scores = {r["post_id"]: r["raw_score"] for r in results}
         return min_max_normalize(scores)
 
+    def _social_recall(self, user_id, top_n, exclude_post_ids):
+        """纯社交召回：直接推荐朋友（及朋友的朋友）喜欢的帖子，不经过标签传播。"""
+        cypher = """
+        MATCH (u:User {id: $uid})
+
+        // 一阶：直接关注的人 like/favorite 的帖子
+        OPTIONAL MATCH (u)-[:FOLLOWS]->(f1:User)-[r1:LIKED|FAVORITED]->(p1:Post)
+        WHERE NOT p1.id IN $exclude_ids
+          AND NOT (u)-[:LIKED|FAVORITED|BROWSED]->(p1)
+        WITH u, collect(DISTINCT {
+            pid: p1.id,
+            score: CASE type(r1) WHEN 'FAVORITED' THEN 0.35 WHEN 'LIKED' THEN 0.25 ELSE 0 END
+        }) AS hop1
+
+        // 二阶：朋友的朋友 like/favorite 的帖子（衰减）
+        OPTIONAL MATCH (u)-[:FOLLOWS]->(:User)-[:FOLLOWS]->(f2:User)-[r2:LIKED|FAVORITED]->(p2:Post)
+        WHERE f2 <> u AND NOT (u)-[:FOLLOWS]->(f2)
+          AND NOT p2.id IN $exclude_ids
+          AND NOT (u)-[:LIKED|FAVORITED|BROWSED]->(p2)
+        WITH hop1, collect(DISTINCT {
+            pid: p2.id,
+            score: CASE type(r2) WHEN 'FAVORITED' THEN 0.14 WHEN 'LIKED' THEN 0.10 ELSE 0 END
+        }) AS hop2
+
+        // 合并两跳结果
+        WITH [x IN hop1 WHERE x.pid IS NOT NULL] + [x IN hop2 WHERE x.pid IS NOT NULL] AS all_items
+        UNWIND all_items AS item
+        WITH item.pid AS post_id, sum(item.score) AS raw_score
+        WHERE post_id IS NOT NULL
+        RETURN post_id, raw_score
+        ORDER BY raw_score DESC
+        LIMIT $limit
+        """
+        results = neo4j_service.run_query(cypher, {
+            "uid": user_id, "limit": top_n, "exclude_ids": exclude_post_ids,
+        })
+        scores = {r["post_id"]: r["raw_score"] for r in results}
+        return min_max_normalize(scores)
+
     def _tag_based_fallback(self, user_id, top_n, exclude_post_ids):
         """冷启动回退：用兴趣标签找帖子 + 二阶社交信号加分"""
         cypher = """
@@ -121,115 +167,159 @@ class GraphEngine:
         scores = {r["post_id"]: r["raw_score"] for r in results}
         return min_max_normalize(scores)
 
+    # 路径优先级：数字越小越优先（与原 or 顺序一致）
+    _PATH_PRIORITY = {
+        'social_1hop': 1,
+        'social_2hop': 2,
+        'shared_tag': 3,
+        'interest_tag': 4,
+        'interest_domain': 5,
+    }
+
     def explain_paths(self, user_id, post_ids):
-        explanations = {}
-        for post_id in post_ids or []:
-            explanation = (
-                self._direct_social_path(user_id, post_id)
-                or self._second_social_path(user_id, post_id)
-                or self._shared_tag_path(user_id, post_id)
-                or self._interest_tag_path(user_id, post_id)
-                or self._interest_domain_path(user_id, post_id)
+        """对一批帖子批量生成解释路径。
+
+        原实现为每条帖子最多 5 次 Cypher 查询（N+1 问题）。
+        现改为 5 次批量查询（每种路径类型一次 UNWIND $pids），
+        然后按优先级取最优路径。总 roundtrip 从 5N 降到 5。
+        """
+        pids = [int(pid) for pid in (post_ids or []) if pid is not None]
+        if not pids:
+            return {}
+
+        candidates = {}
+
+        def _collect(rows, priority, make_explanation):
+            for row in rows:
+                pid = row.get('post_id')
+                if pid is None:
+                    continue
+                existing = candidates.get(pid)
+                if existing is None or existing[0] > priority:
+                    candidates[pid] = (priority, make_explanation(row))
+
+        # ── 路径 1：一阶社交（直接关注的用户互动） ──
+        _collect(
+            neo4j_service.run_query(
+                """
+                UNWIND $pids AS pid
+                MATCH (u:User {id: $uid})-[:FOLLOWS]->(f:User)-[r:LIKED|FAVORITED]->(candidate:Post {id: pid})
+                WITH pid, f, r,
+                     CASE type(r) WHEN 'FAVORITED' THEN 2 WHEN 'LIKED' THEN 1 ELSE 0 END AS rank
+                ORDER BY pid, rank DESC
+                WITH pid, collect({friend_id: f.id, friend_name: f.username, behavior: type(r)})[0] AS best
+                RETURN pid AS post_id, best.friend_id AS friend_id,
+                       best.friend_name AS friend_name, best.behavior AS behavior
+                """,
+                {"uid": user_id, "pids": pids},
+            ),
+            self._PATH_PRIORITY['social_1hop'],
+            self._make_social_explanation('social_1hop', '你关注的用户'),
+        )
+
+        # ── 路径 2：二阶社交（朋友的朋友互动） ──
+        remaining = [pid for pid in pids if pid not in candidates]
+        if remaining:
+            _collect(
+                neo4j_service.run_query(
+                    """
+                    UNWIND $pids AS pid
+                    MATCH (u:User {id: $uid})-[:FOLLOWS]->(:User)-[:FOLLOWS]->(f2:User)-[r:LIKED|FAVORITED]->(candidate:Post {id: pid})
+                    WHERE f2 <> u AND NOT (u)-[:FOLLOWS]->(f2)
+                    WITH pid, f2, r,
+                         CASE type(r) WHEN 'FAVORITED' THEN 2 WHEN 'LIKED' THEN 1 ELSE 0 END AS rank
+                    ORDER BY pid, rank DESC
+                    WITH pid, collect({friend_id: f2.id, friend_name: f2.username, behavior: type(r)})[0] AS best
+                    RETURN pid AS post_id, best.friend_id AS friend_id,
+                           best.friend_name AS friend_name, best.behavior AS behavior
+                    """,
+                    {"uid": user_id, "pids": remaining},
+                ),
+                self._PATH_PRIORITY['social_2hop'],
+                self._make_social_explanation('social_2hop', '你关注链路中的用户'),
             )
-            if explanation:
-                explanations[post_id] = explanation
-        return explanations
 
-    def _direct_social_path(self, user_id, post_id):
-        cypher = """
-        MATCH (u:User {id: $uid})-[:FOLLOWS]->(f:User)-[r:LIKED|FAVORITED]->(candidate:Post {id: $pid})
-        RETURN f.id AS friend_id, f.username AS friend_name, type(r) AS behavior
-        ORDER BY CASE type(r)
-            WHEN 'FAVORITED' THEN 2
-            WHEN 'LIKED' THEN 1
-            ELSE 0
-        END DESC
-        LIMIT 1
-        """
-        row = self._single_row(cypher, {"uid": user_id, "pid": post_id})
-        if not row:
-            return None
-        friend_name = row.get('friend_name') or f"用户 #{row['friend_id']}"
-        return {
-            "type": "social_1hop",
-            "text": f"你关注的用户「{friend_name}」{self._behavior_phrase(row['behavior'])}这篇帖子",
-        }
+        # ── 路径 3：共享标签（历史交互帖与候选同标签） ──
+        remaining = [pid for pid in pids if pid not in candidates]
+        if remaining:
+            _collect(
+                neo4j_service.run_query(
+                    """
+                    UNWIND $pids AS pid
+                    MATCH (u:User {id: $uid})-[r:LIKED|FAVORITED|COMMENTED|BROWSED]->(seed:Post)-[:TAGGED_WITH]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: pid})
+                    WITH pid, seed, t, r,
+                         CASE type(r) WHEN 'FAVORITED' THEN 4 WHEN 'COMMENTED' THEN 3
+                                       WHEN 'LIKED' THEN 2 WHEN 'BROWSED' THEN 1 ELSE 0 END AS rank
+                    ORDER BY pid, rank DESC
+                    WITH pid, collect({seed_id: seed.id, seed_title: seed.title,
+                                       tag_name: t.name, behavior: type(r)})[0] AS best
+                    RETURN pid AS post_id, best.seed_id AS seed_id, best.seed_title AS seed_title,
+                           best.tag_name AS tag_name, best.behavior AS behavior
+                    """,
+                    {"uid": user_id, "pids": remaining},
+                ),
+                self._PATH_PRIORITY['shared_tag'],
+                self._make_shared_tag_explanation,
+            )
 
-    def _second_social_path(self, user_id, post_id):
-        cypher = """
-        MATCH (u:User {id: $uid})-[:FOLLOWS]->(:User)-[:FOLLOWS]->(f2:User)-[r:LIKED|FAVORITED]->(candidate:Post {id: $pid})
-        WHERE f2 <> u AND NOT (u)-[:FOLLOWS]->(f2)
-        RETURN f2.id AS friend_id, f2.username AS friend_name, type(r) AS behavior
-        ORDER BY CASE type(r)
-            WHEN 'FAVORITED' THEN 2
-            WHEN 'LIKED' THEN 1
-            ELSE 0
-        END DESC
-        LIMIT 1
-        """
-        row = self._single_row(cypher, {"uid": user_id, "pid": post_id})
-        if not row:
-            return None
-        friend_name = row.get('friend_name') or f"用户 #{row['friend_id']}"
-        return {
-            "type": "social_2hop",
-            "text": f"你关注链路中的用户「{friend_name}」{self._behavior_phrase(row['behavior'])}这篇帖子",
-        }
+        # ── 路径 4：兴趣标签命中 ──
+        remaining = [pid for pid in pids if pid not in candidates]
+        if remaining:
+            _collect(
+                neo4j_service.run_query(
+                    """
+                    UNWIND $pids AS pid
+                    MATCH (u:User {id: $uid})-[:INTERESTED_IN]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: pid})
+                    WITH pid, collect(t.name)[0] AS tag_name
+                    RETURN pid AS post_id, tag_name
+                    """,
+                    {"uid": user_id, "pids": remaining},
+                ),
+                self._PATH_PRIORITY['interest_tag'],
+                lambda row: {
+                    "type": "interest_tag",
+                    "text": f"这篇帖子命中了你的兴趣标签「{row['tag_name']}」",
+                },
+            )
 
-    def _shared_tag_path(self, user_id, post_id):
-        cypher = """
-        MATCH (u:User {id: $uid})-[r:LIKED|FAVORITED|COMMENTED|BROWSED]->(seed:Post)-[:TAGGED_WITH]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: $pid})
-        RETURN seed.id AS seed_id, seed.title AS seed_title, t.name AS tag_name, type(r) AS behavior
-        ORDER BY CASE type(r)
-            WHEN 'FAVORITED' THEN 4
-            WHEN 'COMMENTED' THEN 3
-            WHEN 'LIKED' THEN 2
-            WHEN 'BROWSED' THEN 1
-            ELSE 0
-        END DESC
-        LIMIT 1
-        """
-        row = self._single_row(cypher, {"uid": user_id, "pid": post_id})
-        if not row:
-            return None
-        seed_title = row.get('seed_title') or f"帖子 #{row['seed_id']}"
+        # ── 路径 5：兴趣领域回退 ──
+        remaining = [pid for pid in pids if pid not in candidates]
+        if remaining:
+            _collect(
+                neo4j_service.run_query(
+                    """
+                    UNWIND $pids AS pid
+                    MATCH (u:User {id: $uid})-[:INTERESTED_DOMAIN]->(d:Domain)<-[:BELONGS_TO]-(:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: pid})
+                    WITH pid, collect(d.name)[0] AS domain_name
+                    RETURN pid AS post_id, domain_name
+                    """,
+                    {"uid": user_id, "pids": remaining},
+                ),
+                self._PATH_PRIORITY['interest_domain'],
+                lambda row: {
+                    "type": "interest_domain",
+                    "text": f"这篇帖子属于你持续关注的领域「{row['domain_name']}」",
+                },
+            )
+
+        return {pid: explanation for pid, (_, explanation) in candidates.items()}
+
+    def _make_social_explanation(self, path_type, prefix):
+        def builder(row):
+            friend_name = row.get('friend_name') or f"用户 #{row.get('friend_id')}"
+            return {
+                "type": path_type,
+                "text": f"{prefix}「{friend_name}」{self._behavior_phrase(row['behavior'])}这篇帖子",
+            }
+        return builder
+
+    def _make_shared_tag_explanation(self, row):
+        seed_title = row.get('seed_title') or f"帖子 #{row.get('seed_id')}"
         return {
             "type": "shared_tag",
-            "text": f"你{self._behavior_past_phrase(row['behavior'])}《{seed_title}》，与这篇共享标签「{row['tag_name']}」",
+            "text": f"你{self._behavior_past_phrase(row['behavior'])}《{seed_title}》，"
+                    f"与这篇共享标签「{row['tag_name']}」",
         }
-
-    def _interest_tag_path(self, user_id, post_id):
-        cypher = """
-        MATCH (u:User {id: $uid})-[:INTERESTED_IN]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: $pid})
-        RETURN t.name AS tag_name
-        LIMIT 1
-        """
-        row = self._single_row(cypher, {"uid": user_id, "pid": post_id})
-        if not row:
-            return None
-        return {
-            "type": "interest_tag",
-            "text": f"这篇帖子命中了你的兴趣标签「{row['tag_name']}」",
-        }
-
-    def _interest_domain_path(self, user_id, post_id):
-        cypher = """
-        MATCH (u:User {id: $uid})-[:INTERESTED_DOMAIN]->(d:Domain)<-[:BELONGS_TO]-(:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: $pid})
-        RETURN d.name AS domain_name
-        LIMIT 1
-        """
-        row = self._single_row(cypher, {"uid": user_id, "pid": post_id})
-        if not row:
-            return None
-        return {
-            "type": "interest_domain",
-            "text": f"这篇帖子属于你持续关注的领域「{row['domain_name']}」",
-        }
-
-    @staticmethod
-    def _single_row(cypher, params):
-        rows = neo4j_service.run_query(cypher, params)
-        return rows[0] if rows else None
 
     @staticmethod
     def _behavior_phrase(behavior_type):

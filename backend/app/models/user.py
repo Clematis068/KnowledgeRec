@@ -18,6 +18,8 @@ class User(db.Model):
     password_hash = db.Column(db.String(256))
     email = db.Column(db.String(128), unique=True)
     gender = db.Column(db.Enum('male', 'female', 'other', name='gender_enum'))
+    role = db.Column(db.String(16), default='user')      # user / admin
+    status = db.Column(db.String(16), default='active')   # active / banned
     avatar_url = db.Column(db.String(256))
     bio = db.Column(db.Text)
     interest_embedding = db.Column(db.JSON)    # 1024-dim weighted avg of interacted posts
@@ -47,6 +49,8 @@ class User(db.Model):
             'username': self.username,
             'email': self.email,
             'gender': self.gender,
+            'role': self.role or 'user',
+            'status': self.status or 'active',
             'avatar_url': self.avatar_url,
             'bio': self.bio,
             'interest_profile': self.interest_profile,

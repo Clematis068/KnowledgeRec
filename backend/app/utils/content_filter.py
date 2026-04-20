@@ -20,6 +20,9 @@ def get_blocked_domain_ids(user_id):
 
 
 def apply_post_visibility_query(query, user_id):
+    # 只展示 published 状态的帖子（管理后台的列表不经过此过滤器）
+    query = query.filter(Post.status.in_(('published', None)))
+
     blocked_author_ids = get_blocked_author_ids(user_id)
     blocked_domain_ids = get_blocked_domain_ids(user_id)
 
@@ -32,6 +35,10 @@ def apply_post_visibility_query(query, user_id):
 
 
 def is_post_visible_to_user(post, user_id):
+    # 被下架/拒绝的帖子对普通用户不可见（作者自己可见以便查看原因）
+    if getattr(post, 'status', 'published') not in ('published', None):
+        if post.author_id != user_id:
+            return False
     if not user_id:
         return True
     if post.author_id == user_id:

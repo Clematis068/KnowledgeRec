@@ -139,61 +139,56 @@ watch(
 
 <style scoped>
 .search-page {
-  max-width: 980px;
-  margin: 0 auto;
+  max-width: 1040px;
   display: grid;
-  gap: 18px;
+  gap: 24px;
 }
 
 .page-title {
-  padding: 18px 24px;
-  border: 1px solid var(--kr-border);
-  border-radius: 20px;
-  background: var(--kr-surface);
-  box-shadow: var(--kr-shadow-clay-soft);
-  font-size: clamp(1.4rem, 2.5vw, 2rem);
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
+  padding: 0 0 20px;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  font-size: clamp(1.8rem, 3vw, 3rem);
+  font-weight: 300;
+  line-height: 1.18;
+  letter-spacing: 0;
 }
 
 .search-section {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 
 .section-label {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--kr-text-muted);
-  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--cds-text-muted);
+  padding: 0;
   margin: 0;
+  letter-spacing: 0.32px;
+  text-transform: uppercase;
 }
 
 .user-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 
 .user-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 8px;
-  padding: 20px 14px 16px;
-  border-radius: 20px;
+  align-items: flex-start;
+  text-align: left;
+  gap: 10px;
+  padding: 20px;
   cursor: pointer;
-  border: 1px solid var(--kr-border);
-  background: var(--kr-surface);
-  box-shadow: var(--kr-shadow-clay-soft);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  background: var(--cds-layer-01);
+  border-top: 3px solid var(--cds-link-primary);
+  transition: background-color 0.2s ease;
 }
 
 .user-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--kr-shadow-clay-soft), 0 4px 12px rgba(0, 0, 0, 0.06);
+  background: var(--cds-layer-hover);
 }
 
 .pagination {
@@ -203,16 +198,16 @@ watch(
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, var(--kr-secondary), var(--kr-primary));
+  background: var(--cds-link-primary);
   color: #fff;
   font-size: 18px;
   flex-shrink: 0;
 }
 
 .user-name {
-  font-size: 0.95rem;
-  font-weight: 800;
-  color: var(--kr-text);
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--cds-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -221,8 +216,8 @@ watch(
 
 .user-bio {
   font-size: 12px;
-  color: var(--kr-text-soft);
-  line-height: 1.5;
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

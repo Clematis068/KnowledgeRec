@@ -195,9 +195,30 @@ def get_my_recommendations():
         return jsonify({"error": str(e)}), 500
 
 
+_CHANNEL_LABELS = {
+    'cf': '协同过滤（行为相似用户都喜欢）',
+    'swing': 'Swing 小圈子相似',
+    'graph': '知识图谱 / 社交关系',
+    'semantic': '语义向量相似',
+    'knowledge': '标签知识约束',
+    'hot': '社区热度',
+}
+
+
+def _top_channels(channel_scores, k=2, min_score=1e-3):
+    """按得分排序取前 k 个有信号的召回通道"""
+    filtered = [(c, s) for c, s in channel_scores.items() if s and s > min_score]
+    filtered.sort(key=lambda x: -x[1])
+    return filtered[:k]
+
+
 @rec_bp.route('/recommend/<int:user_id>/reason/<int:post_id>', methods=['GET'])
 def get_recommendation_reason(user_id, post_id):
-    """LLM 生成推荐理由"""
+    """LLM 生成推荐理由。
+
+    支持前端把卡片里已有的召回通道分数（cf/graph/semantic 等）透传回来，
+    结合图路径证据一起喂给 LLM，让理由比"通用文案"更具体。
+    """
     from app.models.user import User
 
     user = db.session.get(User, user_id)
@@ -205,17 +226,54 @@ def get_recommendation_reason(user_id, post_id):
     if not user or not post:
         return jsonify({"error": "用户或帖子不存在"}), 404
 
+    # 从 query 中读取各通道分数（可选）
+    channel_scores = {}
+    for channel in _CHANNEL_LABELS:
+        val = request.args.get(f'{channel}_score', type=float)
+        if val is not None:
+            channel_scores[channel] = val
+
+    # 图路径证据（单条查询，已批量过）
+    graph_path = None
+    try:
+        paths = recommendation_engine.graph.explain_paths(user_id, [post_id])
+        graph_path = paths.get(post_id)
+    except Exception:
+        graph_path = None
+
+    # 组装 prompt
+    evidence_lines = []
+    top_channels = _top_channels(channel_scores)
+    if top_channels:
+        evidence_lines.append(
+            "主要召回来源：" + "；".join(
+                f"{_CHANNEL_LABELS[c]}（归一化得分 {s:.2f}）" for c, s in top_channels
+            )
+        )
+    if graph_path and graph_path.get('text'):
+        evidence_lines.append(f"图谱证据：{graph_path['text']}")
+    evidence_block = "\n".join(evidence_lines) if evidence_lines else "（无额外通道证据，按兴趣画像解释即可）"
+
     prompt = (
-        f"你是推荐系统的解释模块。\n"
+        "你是推荐系统的解释模块。请基于以下信息，用 1-2 句简洁自然的中文向用户说明"
+        "为什么推荐这篇文章。用用户能理解的语言表达，避免直接提及算法名词、分数、召回通道等字面。\n\n"
         f"用户兴趣：{user.interest_profile or user.bio or '未知'}\n"
         f"推荐文章：{post.title}\n"
         f"文章摘要：{post.summary or '无'}\n"
-        f"请用一句简洁的中文说明为什么向该用户推荐这篇文章。"
+        f"推荐依据：\n{evidence_block}\n"
     )
 
     try:
         reason = qwen_service.chat(prompt)
-        return jsonify({"reason": reason})
+        payload = {"reason": reason}
+        if graph_path:
+            payload["graph_path"] = graph_path
+        if top_channels:
+            payload["top_channels"] = [
+                {"channel": c, "label": _CHANNEL_LABELS[c], "score": round(s, 4)}
+                for c, s in top_channels
+            ]
+        return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -28,6 +28,10 @@
             </el-tag>
           </div>
 
+          <div v-if="post.image_url" class="article-feature-image">
+            <img :src="post.image_url" :alt="post.title">
+          </div>
+
           <div v-if="authStore.isLoggedIn" class="manage-bar">
             <template v-if="isOwnPost">
               <el-button size="small" @click="goToEdit">编辑帖子</el-button>
@@ -505,6 +509,21 @@ async function toggleBlockDomain() {
   border-color: var(--kr-border);
   color: var(--kr-text-soft);
   background: transparent;
+}
+
+.article-feature-image {
+  margin-top: 24px;
+  width: 100%;
+  max-height: 480px;
+  overflow: hidden;
+  background: var(--cds-layer-01);
+}
+
+.article-feature-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .manage-bar {

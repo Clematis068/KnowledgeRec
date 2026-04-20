@@ -1,4 +1,5 @@
-from flask import Flask
+import os
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_apscheduler import APScheduler
@@ -41,6 +42,7 @@ def create_app():
     from .api.notification import notification_bp
     from .api.upload import upload_bp
     from .api.evaluation import evaluation_bp
+    from .api.admin import admin_bp
 
     app.register_blueprint(llm_bp, url_prefix='/api/llm')
     app.register_blueprint(rec_bp, url_prefix='/api')
@@ -52,6 +54,13 @@ def create_app():
     app.register_blueprint(notification_bp, url_prefix='/api/notification')
     app.register_blueprint(upload_bp, url_prefix='/api/upload')
     app.register_blueprint(evaluation_bp, url_prefix='/api/evaluation')
+    app.register_blueprint(admin_bp, url_prefix='/api/admin')
+
+    # 静态文件路由：提供上传图片的访问支持
+    @app.route('/uploads/<path:filename>')
+    def uploaded_file(filename):
+        upload_path = os.path.join(app.root_path, '..', 'uploads')
+        return send_from_directory(upload_path, filename)
 
     # 注册预计算定时任务（每 6 小时执行一次）
     from .services.recommendation import recommendation_engine

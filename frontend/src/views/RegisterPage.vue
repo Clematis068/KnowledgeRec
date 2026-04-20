@@ -290,49 +290,72 @@ onBeforeUnmount(clearCountdown)
 <style scoped>
 .register-page {
   min-height: 100vh;
-  padding: 24px;
+  padding: 32px;
 }
 
 .register-shell {
-  max-width: 1320px;
+  max-width: var(--cds-layout-max-width);
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-  gap: 24px;
+  gap: 32px;
   align-items: start;
 }
 
 .card-panel,
 .register-card {
-  border: 1px solid var(--kr-border);
-  border-radius: 34px;
-  background: var(--kr-surface);
-  box-shadow: var(--kr-shadow-clay);
+  border: none;
+  border-radius: 0;
 }
 
 .register-copy {
+  position: relative;
   min-height: 320px;
-  padding: 34px;
-  background: var(--kr-bg-soft);
+  padding: 48px;
+  background: var(--cds-background) !important;
+  color: var(--cds-text-primary);
+}
+
+.register-copy::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  right: 24px;
+  height: 4px;
+  background: var(--cds-link-primary);
 }
 
 .register-copy h1,
 .brand-row h2 {
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
 }
 
 .register-copy h1 {
   max-width: 9ch;
-  font-size: clamp(3rem, 6vw, 5.4rem);
-  line-height: 0.9;
+  font-size: clamp(2.75rem, 6vw, 5rem);
+  line-height: 1.08;
+  color: var(--cds-text-primary);
 }
 
 .register-copy p,
-.brand-row p,
 .tag-hint {
   margin-top: 16px;
-  color: var(--kr-text-soft);
-  line-height: 1.8;
+  line-height: 1.6;
+}
+
+.register-copy p {
+  color: var(--cds-text-secondary);
+}
+
+.brand-row h2 {
+  color: var(--cds-text-primary);
+}
+
+.brand-row p {
+  margin-top: 16px;
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
 }
 
 .copy-links {
@@ -354,10 +377,8 @@ onBeforeUnmount(clearCountdown)
   place-items: center;
   width: 50px;
   height: 50px;
-  border-radius: 18px;
-  color: #fff;
-  background: var(--kr-secondary);
-  box-shadow: var(--kr-shadow-clay-soft);
+  color: #ffffff;
+  background: var(--cds-link-primary);
 }
 
 .steps {
@@ -383,8 +404,13 @@ onBeforeUnmount(clearCountdown)
 
 .tag-hint {
   margin-top: 0;
-  color: var(--kr-danger);
-  font-weight: 700;
+  color: var(--cds-support-error);
+  font-weight: 400;
+}
+
+.register-card {
+  background: var(--cds-background) !important;
+  border-top: 4px solid var(--cds-background-inverse);
 }
 
 @media (max-width: 1024px) {
@@ -396,6 +422,16 @@ onBeforeUnmount(clearCountdown)
 @media (max-width: 640px) {
   .register-page {
     padding: 16px;
+  }
+
+  .register-copy {
+    padding: 40px 24px 32px;
+  }
+
+  .register-copy::before {
+    top: 16px;
+    left: 16px;
+    right: 16px;
   }
 
   .copy-links,

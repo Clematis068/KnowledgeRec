@@ -1,4 +1,5 @@
 <script setup>
+import { Plus } from '@element-plus/icons-vue'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus/es/components/message/index'
@@ -20,6 +21,7 @@ const form = ref({
   title: '',
   domain_id: null,
   content: '',
+  image_url: '',
 })
 
 const rules = {
@@ -42,10 +44,24 @@ async function fetchPost() {
       title: post.title || '',
       domain_id: post.domain_id || null,
       content: post.content || '',
+      image_url: post.image_url || '',
     }
   } finally {
     loading.value = false
   }
+}
+
+function handleUploadSuccess(res) {
+  form.value.image_url = res.url
+  ElMessage.success('封面上传成功')
+}
+
+function beforeUpload(file) {
+  const isLt5M = file.size / 1024 / 1024 < 5
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB')
+  }
+  return isLt5M
 }
 
 async function handleSubmit() {
@@ -82,6 +98,22 @@ onMounted(() => {
       :rules="rules"
       label-position="top"
     >
+      <el-form-item label="封面图片">
+        <el-upload
+          class="cover-uploader"
+          action="/api/upload/image"
+          :show-file-list="false"
+          :on-success="handleUploadSuccess"
+          :before-upload="beforeUpload"
+          name="file"
+          :headers="{ Authorization: `Bearer ${localStorage.getItem('token')}` }"
+        >
+          <img v-if="form.image_url" :src="form.image_url" class="cover-preview" />
+          <el-icon v-else class="cover-uploader-icon"><Plus /></el-icon>
+        </el-upload>
+        <div class="upload-tip">建议尺寸 800x450，支持 jpg/png，小于 5MB</div>
+      </el-form-item>
+
       <el-form-item label="标题" prop="title">
         <el-input v-model="form.title" placeholder="请输入标题" maxlength="200" show-word-limit />
       </el-form-item>
@@ -128,8 +160,42 @@ onMounted(() => {
 .edit-post-page :deep(.el-form) {
   padding: 24px;
   border: 1px solid var(--kr-border);
-  border-radius: 30px;
+  border-radius: 0;
   background: var(--kr-surface);
-  box-shadow: var(--kr-shadow-clay-soft);
+}
+
+.cover-uploader {
+  border: 1px dashed var(--cds-border-subtle);
+  background: var(--cds-layer-01);
+  width: 240px;
+  height: 135px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s;
+}
+
+.cover-uploader:hover {
+  border-color: var(--cds-link-primary);
+}
+
+.cover-uploader-icon {
+  font-size: 28px;
+  color: var(--cds-text-muted);
+}
+
+.cover-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: var(--cds-text-muted);
+  margin-top: 8px;
 }
 </style>

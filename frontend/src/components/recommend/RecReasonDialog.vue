@@ -17,6 +17,18 @@
         <span class="reason-kicker">推荐说明</span>
         <h3>推荐给你的原因</h3>
       </div>
+      <div v-if="graphPathText" class="reason-evidence">
+        <span class="evidence-label">图谱依据</span>
+        <div class="evidence-text">{{ graphPathText }}</div>
+      </div>
+      <div v-if="topChannels.length" class="reason-channels">
+        <span class="evidence-label">主要召回来源</span>
+        <div class="channel-list">
+          <span v-for="c in topChannels" :key="c.channel" class="channel-chip">
+            {{ c.label }} · {{ (c.score * 100).toFixed(0) }}%
+          </span>
+        </div>
+      </div>
       <div class="reason-scroll">
         <div class="reason-text">{{ reason }}</div>
       </div>
@@ -25,29 +37,51 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { getRecommendReason } from '../../api/recommendation'
 
 const props = defineProps({
   modelValue: Boolean,
   userId: Number,
   postId: Number,
+  recItem: { type: Object, default: null },
 })
 
 const emit = defineEmits(['update:modelValue'])
 
 const visible = ref(false)
 const reason = ref('')
+const graphPath = ref(null)
+const topChannels = ref([])
 const loading = ref(false)
+
+const graphPathText = computed(() => (
+  graphPath.value?.text || props.recItem?.graph_path_text || ''
+))
+
+function extractChannelScores(item) {
+  if (!item) return null
+  const fields = ['cf_score', 'swing_score', 'graph_score', 'semantic_score', 'knowledge_score', 'hot_score']
+  const scores = {}
+  for (const f of fields) {
+    if (item[f] !== undefined && item[f] !== null) scores[f] = item[f]
+  }
+  return Object.keys(scores).length ? scores : null
+}
 
 watch(() => props.modelValue, async (val) => {
   visible.value = val
   if (val && props.userId && props.postId) {
     loading.value = true
     reason.value = ''
+    graphPath.value = null
+    topChannels.value = []
     try {
-      const data = await getRecommendReason(props.userId, props.postId)
+      const scores = extractChannelScores(props.recItem)
+      const data = await getRecommendReason(props.userId, props.postId, scores)
       reason.value = data.reason
+      graphPath.value = data.graph_path || null
+      topChannels.value = data.top_channels || []
     } catch {
       reason.value = '获取推荐理由失败'
     } finally {
@@ -121,5 +155,44 @@ watch(visible, (val) => {
   font-size: 14px;
   color: var(--kr-text);
   white-space: pre-wrap;
+}
+
+.reason-evidence,
+.reason-channels {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.evidence-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--kr-text-soft);
+  text-transform: uppercase;
+}
+
+.evidence-text {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--kr-text);
+}
+
+.channel-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.channel-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--kr-text);
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 </style>

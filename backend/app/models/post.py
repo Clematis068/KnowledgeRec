@@ -16,8 +16,11 @@ class Post(db.Model):
     title = db.Column(db.String(256), nullable=False)
     content = db.Column(db.Text, nullable=False)
     summary = db.Column(db.String(512))          # LLM读取生成summ，改成结构化的prompt
+    image_url = db.Column(db.String(512))        # 帖子配图URL
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     domain_id = db.Column(db.Integer, db.ForeignKey('domain.id'), nullable=False)
+    status = db.Column(db.String(16), default='published')  # published / pending / rejected / removed
+    reject_reason = db.Column(db.String(512))               # 审核拒绝原因
     view_count = db.Column(db.Integer, default=0)
     like_count = db.Column(db.Integer, default=0)
     content_embedding = db.Column(db.JSON)       # 1024d
@@ -35,9 +38,12 @@ class Post(db.Model):
             'title': self.title,
             'content': self.content,
             'summary': self.summary,
+            'image_url': self.image_url,
             'author_id': self.author_id,
             'author_name': self.author.username if self.author else None,
             'author_avatar_url': self.author.avatar_url if self.author else None,
+            'status': self.status or 'published',
+            'reject_reason': self.reject_reason,
             'domain_id': self.domain_id,
             'domain_name': self.domain.name if self.domain else None,
             'view_count': self.view_count,

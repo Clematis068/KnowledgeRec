@@ -102,18 +102,20 @@ onMounted(() => {
   position: sticky;
   top: 96px;
   display: grid;
-  gap: 30px;
+  gap: 24px;
 }
 
 .rail-section {
-  padding-top: 4px;
+  padding: 20px;
+  background: var(--cds-layer-01);
+  border-top: 3px solid var(--cds-link-primary);
 }
 
 .rail-title {
   margin-bottom: 18px;
-  font-size: 1.85rem;
-  line-height: 1;
-  letter-spacing: -0.04em;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  letter-spacing: 0;
 }
 
 .pick-list {
@@ -123,7 +125,7 @@ onMounted(() => {
 
 .pick-item {
   padding-bottom: 18px;
-  border-bottom: 1px solid var(--kr-border);
+  border-bottom: 1px solid var(--cds-border-subtle);
   cursor: pointer;
 }
 
@@ -132,15 +134,15 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  color: var(--kr-text-muted);
+  color: var(--cds-text-muted);
   font-size: 12px;
 }
 
 .pick-title {
   margin: 8px 0 10px;
-  font-size: 1.35rem;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
+  font-size: 1.1rem;
+  line-height: 1.4;
+  letter-spacing: 0;
 }
 
 .topic-grid {
@@ -152,11 +154,11 @@ onMounted(() => {
 .topic-chip {
   min-height: 40px;
   padding: 0 14px;
-  border: 1px solid var(--kr-border);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.8);
-  color: var(--kr-text);
-  font-weight: 700;
+  background: var(--cds-background);
+  color: var(--cds-link-primary);
+  font-weight: 400;
 }
 
 .mini-links {
@@ -168,8 +170,8 @@ onMounted(() => {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--kr-text);
-  font-weight: 700;
+  color: var(--cds-link-primary);
+  font-weight: 400;
   text-align: left;
 }
 

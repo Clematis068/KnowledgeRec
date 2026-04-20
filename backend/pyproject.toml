@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "backendppt"
 requires-python = ">=3.13"
 dependencies = [
+    "alibabacloud-quanmiaolightapp20240801>=2.13.8",
+    "alibabacloud-tea-openapi>=0.4.4",
     "beautifulsoup4>=4.14.3",
     "faker>=40.4.0",
     "feedparser>=6.0.12",
@@ -13,6 +15,7 @@ dependencies = [
     "flask-socketio>=5.6.1",
     "flask-sqlalchemy>=3.1.1",
     "lxml>=6.0.2",
+    "matplotlib>=3.10.8",
     "neo4j>=6.1.0",
     "numpy>=2.4.2",
     "openai>=2.20.0",

@@ -74,6 +74,7 @@
       v-model="reasonDialogVisible"
       :user-id="selectedUserId || authStore.userId"
       :post-id="reasonPostId"
+      :rec-item="reasonItem"
     />
     <RecommendDebugPanel v-model:visible="showDebugPanel" :debug="recommendDebug" />
   </div>
@@ -110,6 +111,7 @@ const latestPosts = ref([])
 
 const reasonDialogVisible = ref(false)
 const reasonPostId = ref(null)
+const reasonItem = ref(null)
 
 const {
   recommendations,
@@ -212,8 +214,15 @@ function handleTabChange() {
   fetchLatestFeed()
 }
 
-function openReason(postId) {
-  reasonPostId.value = postId
+function openReason(item) {
+  // 兼容传 postId（向后兼容）或整个 item
+  if (typeof item === 'number') {
+    reasonPostId.value = item
+    reasonItem.value = null
+  } else {
+    reasonPostId.value = item.post_id
+    reasonItem.value = item
+  }
   reasonDialogVisible.value = true
 }
 
@@ -301,12 +310,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .recommend-page {
   min-width: 0;
+  display: grid;
+  gap: 24px;
 }
 
 .recommend-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 42px;
+  grid-template-columns: minmax(0, 1fr) 336px;
+  gap: 32px;
   align-items: start;
 }
 
@@ -320,8 +331,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--kr-border);
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--cds-border-subtle);
 }
 
 .tabs-wrap {
@@ -345,64 +356,43 @@ onBeforeUnmount(() => {
   align-items: center;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--kr-border-strong);
-  border-radius: 999px;
-  color: var(--kr-text);
+  background: var(--cds-layer-01);
+  color: var(--cds-text-secondary);
   font-size: 13px;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.72);
+  font-weight: 400;
 }
 
-
 .recommend-page :deep(.el-tabs__item) {
-  color: var(--kr-text-soft);
+  color: var(--cds-text-secondary);
   background: transparent !important;
 }
 
 .recommend-page :deep(.el-tabs__item:hover),
 .recommend-page :deep(.el-tabs__item.is-active) {
-  color: var(--kr-text) !important;
+  color: var(--cds-text-primary) !important;
   background: transparent !important;
 }
 
 .recommend-page :deep(.el-tabs__active-bar) {
-  background: var(--kr-text) !important;
+  background: var(--cds-link-primary) !important;
 }
 
 .toolbar-button.el-button--primary {
-  background: var(--kr-text) !important;
-  border-color: var(--kr-text) !important;
-  color: #fff !important;
+  min-width: 112px;
 }
-
-.toolbar-button.el-button--primary:hover,
-.toolbar-button.el-button--primary:focus {
-  background: #000 !important;
-  border-color: #000 !important;
-}
-
-.toolbar-button.el-button--text {
-  color: var(--kr-text) !important;
-}
-
-.toolbar-button.el-button--text:hover,
-.toolbar-button.el-button--text:focus {
-  color: #000 !important;
-  background: transparent !important;
-}
-
 
 .loading-area {
   display: grid;
   place-items: center;
   min-height: 320px;
-  color: var(--kr-text-muted);
+  background: var(--cds-layer-01);
+  color: var(--cds-text-muted);
 }
 
 .loading-text,
 .feed-status {
-  color: var(--kr-text-soft);
-  line-height: 1.8;
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
 }
 
 .result-area {
@@ -415,8 +405,9 @@ onBeforeUnmount(() => {
 }
 
 .feed-status {
-  padding: 8px 0 4px;
+  padding: 16px;
   text-align: center;
+  background: var(--cds-layer-01);
 }
 
 @media (max-width: 1180px) {

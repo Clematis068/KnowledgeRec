@@ -4,7 +4,10 @@
       <div class="brand-mark">
         <el-icon :size="18"><Connection /></el-icon>
       </div>
-      <span class="brand-title">知识推荐</span>
+      <div class="brand-copy">
+        <span class="brand-eyebrow">Knowledge Graph Community</span>
+        <span class="brand-title">知识推荐</span>
+      </div>
     </div>
 
     <div class="navbar-search">
@@ -70,8 +73,6 @@
         <el-dropdown @command="handleCommand">
           <span class="user-info">
             <el-avatar :size="34" :icon="UserFilled" class="user-avatar" />
-            <span class="username">{{ authStore.username }}</span>
-            <el-icon><ArrowDown /></el-icon>
           </span>
           <template #dropdown>
             <el-dropdown-menu>
@@ -79,6 +80,7 @@
               <el-dropdown-item command="my-posts">我的发帖</el-dropdown-item>
               <el-dropdown-item command="profile">个人资料</el-dropdown-item>
               <el-dropdown-item command="evaluation">实验评估</el-dropdown-item>
+              <el-dropdown-item v-if="authStore.user?.role === 'admin'" command="admin">管理后台</el-dropdown-item>
               <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -305,6 +307,8 @@ function handleCommand(cmd) {
     router.push(`/users/${authStore.userId}`)
   } else if (cmd === 'evaluation') {
     router.push('/evaluation')
+  } else if (cmd === 'admin') {
+    router.push('/admin')
   } else if (cmd === 'logout') {
     authStore.logout()
     router.push('/login')
@@ -335,14 +339,13 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
 <style scoped>
 .navbar {
   display: grid;
-  grid-template-columns: auto minmax(260px, 440px) auto;
+  grid-template-columns: auto minmax(280px, 520px) auto;
   gap: 24px;
   align-items: center;
-  min-height: 72px;
-  max-width: 1440px;
+  min-height: 64px;
+  max-width: var(--cds-layout-max-width);
   margin: 0 auto;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--kr-border);
+  padding: 8px 32px;
 }
 
 .brand-block {
@@ -355,18 +358,29 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  color: #fff;
-  background: var(--kr-accent);
+  width: 32px;
+  height: 32px;
+  color: #ffffff;
+  background: var(--cds-background-inverse);
+}
+
+.brand-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.brand-eyebrow {
+  color: var(--cds-text-muted);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.32px;
 }
 
 .brand-title {
-  font-family: 'Newsreader', Georgia, serif;
-  font-size: clamp(1.9rem, 2.5vw, 2.3rem);
-  line-height: 1;
-  letter-spacing: -0.04em;
+  color: var(--cds-text-primary);
+  font-size: 18px;
+  line-height: 1.1;
+  font-weight: 400;
 }
 
 .navbar-search {
@@ -378,25 +392,46 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
 .search-shell {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  width: min(100%, 440px);
+  width: min(100%, 520px);
 }
 
 .search-type-chip {
-  min-height: 42px;
+  min-height: 40px;
   padding: 0 14px;
-  border: 1px solid var(--kr-border);
-  border-radius: 999px;
-  background: var(--kr-surface);
-  color: var(--kr-text-soft);
-  font-weight: 700;
+  border: 1px solid var(--cds-border-subtle);
+  background: transparent;
+  color: var(--cds-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.search-type-chip:hover {
+  border-color: var(--cds-border-strong);
+  background: var(--cds-layer-hover);
 }
 
 .search-input :deep(.el-input__wrapper) {
-  min-height: 46px;
-  border-radius: 999px !important;
-  background: var(--kr-surface-alt) !important;
+  min-height: 40px;
+  background: var(--cds-layer-01) !important;
+  outline: none !important;
+  box-shadow: inset 0 -1px 0 var(--cds-border-subtle) !important;
+}
+
+.search-input :deep(.el-input__wrapper:hover) {
+  outline: none !important;
+  box-shadow: inset 0 -2px 0 var(--cds-text-primary) !important;
+}
+
+.search-input :deep(.el-input__wrapper.is-focus),
+.search-input :deep(.el-input__wrapper:focus),
+.search-input :deep(.el-input__wrapper:focus-visible),
+.search-input :deep(.el-input__wrapper:focus-within) {
+  outline: none !important;
+  border: none !important;
+  box-shadow: inset 0 -2px 0 var(--cds-link-primary) !important;
 }
 
 .search-suggestion {
@@ -412,7 +447,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
 .search-suggestion.is-first-hot {
   margin-top: 10px;
   padding-top: 12px;
-  border-top: 1px solid var(--kr-border);
+  border-top: 1px solid var(--cds-border-subtle);
 }
 
 .suggestion-divider {
@@ -420,14 +455,14 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
   align-items: center;
   width: fit-content;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 400;
+  letter-spacing: 0.32px;
   text-transform: uppercase;
-  color: var(--kr-text-muted);
+  color: var(--cds-text-muted);
 }
 
 .suggestion-title {
-  color: var(--kr-text);
+  color: var(--cds-text-primary);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
@@ -438,7 +473,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
   flex-wrap: wrap;
   gap: 10px;
   font-size: 11px;
-  color: var(--kr-text-muted);
+  color: var(--cds-text-muted);
 }
 
 .suggestion-source {
@@ -447,20 +482,20 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 10px;
-  font-weight: 700;
-  color: var(--kr-primary-strong);
-  background: var(--kr-primary-soft);
+  font-weight: 400;
+  color: var(--cds-link-primary);
+  background: var(--cds-blue-10);
 }
 
 .suggestion-source.history {
-  color: var(--kr-secondary);
-  background: var(--kr-secondary-soft);
+  color: var(--cds-text-secondary);
+  background: var(--cds-layer-01);
 }
 
 .suggestion-action {
-  color: var(--kr-danger);
+  color: var(--cds-support-error);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .navbar-right {
@@ -471,17 +506,17 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
 }
 
 .nav-action {
-  --el-button-text-color: var(--kr-text);
-  --el-button-hover-text-color: var(--kr-text);
-  --el-button-active-text-color: var(--kr-text);
+  --el-button-text-color: var(--cds-text-primary);
+  --el-button-hover-text-color: var(--cds-text-primary);
+  --el-button-active-text-color: var(--cds-text-primary);
   --el-button-bg-color: transparent;
-  --el-button-hover-bg-color: transparent;
-  --el-button-active-bg-color: transparent;
+  --el-button-hover-bg-color: var(--cds-layer-hover);
+  --el-button-active-bg-color: var(--cds-layer-hover);
   --el-button-border-color: transparent;
   --el-button-hover-border-color: transparent;
   --el-button-active-border-color: transparent;
-  color: var(--kr-text);
-  font-weight: 700;
+  color: var(--cds-text-primary);
+  font-weight: 400;
 }
 
 .icon-button {
@@ -490,10 +525,15 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border: 1px solid var(--kr-border);
-  border-radius: 999px;
-  background: var(--kr-surface);
-  color: var(--kr-text-soft);
+  border: 1px solid var(--cds-border-subtle);
+  background: transparent;
+  color: var(--cds-text-primary);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.icon-button:hover {
+  border-color: var(--cds-border-strong);
+  background: var(--cds-layer-hover);
 }
 
 .notification-btn {
@@ -511,24 +551,33 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: #f56c6c;
+  background: var(--cds-support-error);
   color: #fff;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
 }
 
 .user-info {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 2px 0;
-  color: var(--kr-text);
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 0;
+  color: var(--cds-text-primary);
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.user-info:hover {
+  background: var(--cds-layer-hover);
 }
 
 .user-avatar {
-  color: #fff;
-  background: #111111;
+  color: #ffffff;
+  background: var(--cds-background-inverse);
 }
 
 .username {
@@ -536,12 +585,13 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 @media (max-width: 1180px) {
   .navbar {
     grid-template-columns: 1fr;
+    padding-inline: 24px;
   }
 
   .navbar-search {
@@ -555,6 +605,10 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
 }
 
 @media (max-width: 680px) {
+  .navbar {
+    padding-inline: 16px;
+  }
+
   .search-shell {
     grid-template-columns: 1fr;
   }

@@ -31,3 +31,5 @@ docs/
 backend/uploads/
 backend/reports/
 .firecrawl/
+backend/data/
+backend/models/*.pkl

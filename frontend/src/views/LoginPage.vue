@@ -44,16 +44,33 @@ function goToDashboard() {
   <div class="login-page">
     <div class="login-shell">
       <section class="login-copy card-panel">
-        <h1>欢迎回来</h1>
-        <p>登录后可以获取个性化推荐，关注你感兴趣的话题和作者。</p>
+        <div class="login-copy-main">
+          <p class="copy-eyebrow">Member Access</p>
+          <h1>欢迎回来</h1>
+          <p class="copy-lead">登录后即可进入推荐流，继续浏览关注内容、热门趋势与作者关系。</p>
 
-        <div class="copy-actions">
-          <router-link to="/">
-            <el-button plain size="large">返回首页</el-button>
-          </router-link>
-          <router-link to="/register">
-            <el-button text size="large">去注册</el-button>
-          </router-link>
+          <div class="copy-points">
+            <div class="copy-point">
+              <span class="point-index">01</span>
+              <p>进入个性化推荐页，按推荐、关注、最新三种视图浏览内容。</p>
+            </div>
+            <div class="copy-point">
+              <span class="point-index">02</span>
+              <p>继续追踪感兴趣的作者与话题，查看社区热点与实时更新。</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="copy-footer">
+          <p class="copy-footer-text">首次使用的话，先创建账号并完成兴趣选择。</p>
+          <div class="copy-actions">
+            <router-link to="/">
+              <el-button plain size="large">返回首页</el-button>
+            </router-link>
+            <router-link to="/register">
+              <el-button text size="large">去注册</el-button>
+            </router-link>
+          </div>
         </div>
       </section>
 
@@ -121,59 +138,149 @@ function goToDashboard() {
 <style scoped>
 .login-page {
   min-height: 100vh;
-  padding: 24px;
+  padding: 32px;
 }
 
 .login-shell {
-  max-width: 1240px;
+  max-width: var(--cds-layout-max-width);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) 430px;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1.2fr) 430px;
+  gap: 32px;
   align-items: stretch;
 }
 
 .card-panel,
 .login-card {
-  border: 1px solid var(--kr-border);
-  border-radius: 34px;
-  background: var(--kr-surface);
-  box-shadow: var(--kr-shadow-clay);
+  border: none;
+  border-radius: 0;
 }
 
 .login-copy {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 40px;
+  position: relative;
   min-height: 540px;
-  padding: 34px;
-  background: var(--kr-bg-soft);
+  padding: 48px;
+  background: var(--cds-background) !important;
+  color: var(--cds-text-primary);
+}
+
+.login-copy::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  right: 24px;
+  height: 4px;
+  background: var(--cds-link-primary);
+}
+
+.login-copy-main {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+}
+
+.copy-eyebrow {
+  color: var(--cds-text-muted);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.32px;
+  text-transform: uppercase;
 }
 
 .login-copy h1,
 .brand-row h2,
 .welcome-panel h3 {
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
 }
 
 .login-copy h1 {
   max-width: 10ch;
-  font-size: clamp(3rem, 6vw, 5.4rem);
-  line-height: 0.9;
+  font-size: clamp(2.75rem, 6vw, 5rem);
+  line-height: 1.08;
+  color: var(--cds-text-primary);
 }
 
-.login-copy p,
+.copy-lead,
+.copy-footer-text {
+  max-width: 34rem;
+  color: var(--cds-text-secondary);
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+.copy-points {
+  display: grid;
+  gap: 16px;
+  max-width: 36rem;
+}
+
+.copy-point {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding-top: 16px;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.point-index {
+  color: var(--cds-text-muted);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.32px;
+}
+
+.copy-point p {
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
+}
+
+.copy-footer {
+  display: grid;
+  gap: 16px;
+}
+
+.brand-row h2,
+.welcome-panel h3 {
+  color: var(--cds-text-primary);
+}
+
 .brand-row p {
   margin-top: 16px;
-  color: var(--kr-text-soft);
-  line-height: 1.8;
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
 }
 
 .copy-actions {
   display: flex;
   gap: 12px;
-  margin-top: 28px;
   flex-wrap: wrap;
+}
+
+.login-copy :deep(.el-button--default),
+.login-copy :deep(.el-button.is-plain) {
+  color: var(--cds-text-primary);
+  border-color: var(--cds-text-primary);
+}
+
+.login-copy :deep(.el-button--default:hover),
+.login-copy :deep(.el-button.is-plain:hover) {
+  color: var(--cds-text-primary);
+  border-color: var(--cds-text-primary);
+  background: var(--cds-layer-hover) !important;
+}
+
+.login-copy :deep(.el-button--text:not(.is-disabled)) {
+  color: var(--cds-link-primary);
+}
+
+.login-copy :deep(.el-button--text:not(.is-disabled):hover) {
+  color: var(--cds-link-primary-hover);
+  background: var(--cds-blue-10) !important;
 }
 
 .brand-row {
@@ -188,10 +295,8 @@ function goToDashboard() {
   place-items: center;
   width: 50px;
   height: 50px;
-  border-radius: 18px;
-  color: #fff;
-  background: var(--kr-primary);
-  box-shadow: var(--kr-shadow-clay-soft);
+  color: #ffffff;
+  background: var(--cds-link-primary);
 }
 
 .login-form-wrap {
@@ -201,7 +306,28 @@ function goToDashboard() {
 .login-card {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  position: relative;
+  min-height: 540px;
+  background: var(--cds-background) !important;
+}
+
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  right: 24px;
+  height: 4px;
+  background: var(--cds-background-inverse);
+  z-index: 1;
+}
+
+.login-card :deep(.el-card__body) {
+  display: grid;
+  align-content: start;
+  height: 100%;
+  padding: 56px 48px 48px;
 }
 
 .submit-button {
@@ -216,8 +342,8 @@ function goToDashboard() {
   gap: 12px;
   margin-top: 12px;
   font-size: 14px;
-  font-weight: 700;
-  color: var(--kr-primary-strong);
+  font-weight: 400;
+  color: var(--cds-link-primary);
 }
 
 .welcome-panel {
@@ -236,6 +362,27 @@ function goToDashboard() {
 
   .login-copy {
     min-height: auto;
+    padding: 32px 24px;
+  }
+
+  .login-copy::before {
+    top: 16px;
+    left: 16px;
+    right: 16px;
+  }
+
+  .login-card {
+    min-height: auto;
+  }
+
+  .login-card::before {
+    top: 16px;
+    left: 16px;
+    right: 16px;
+  }
+
+  .login-card :deep(.el-card__body) {
+    padding: 40px 24px 32px;
   }
 }
 

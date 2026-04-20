@@ -247,64 +247,84 @@ onBeforeUnmount(clearCountdown)
 <style scoped>
 .forgot-page {
   min-height: 100vh;
-  padding: 24px;
+  padding: 32px;
 }
 
 .forgot-shell {
-  max-width: 1240px;
+  max-width: var(--cds-layout-max-width);
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) 440px;
-  gap: 24px;
+  gap: 32px;
   align-items: stretch;
 }
 
 .card-panel,
 .forgot-card {
-  border: 1px solid var(--kr-border);
-  border-radius: 34px;
-  background: var(--kr-surface);
-  box-shadow: var(--kr-shadow-clay);
+  border: none;
+  border-radius: 0;
 }
 
 .forgot-copy {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  position: relative;
   min-height: 540px;
-  padding: 34px;
-  background: var(--kr-bg-soft);
+  padding: 48px;
+  background: var(--cds-background) !important;
+  color: var(--cds-text-primary);
+}
+
+.forgot-copy::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  right: 24px;
+  height: 4px;
+  background: var(--cds-link-primary);
 }
 
 .page-kicker {
   display: inline-flex;
   margin-bottom: 14px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.32px;
   text-transform: uppercase;
-  color: var(--kr-primary-strong);
-  background: var(--kr-primary-soft);
+  color: var(--cds-text-muted);
 }
 
 .forgot-copy h1,
 .brand-row h2 {
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
 }
 
 .forgot-copy h1 {
   max-width: 10ch;
-  font-size: clamp(3rem, 6vw, 5rem);
-  line-height: 0.9;
+  font-size: clamp(2.75rem, 6vw, 5rem);
+  line-height: 1.08;
+  color: var(--cds-text-primary);
 }
 
-.forgot-copy p,
+.forgot-copy p {
+  margin-top: 16px;
+  line-height: 1.6;
+}
+
+.forgot-copy p {
+  color: var(--cds-text-secondary);
+}
+
+.brand-row h2 {
+  color: var(--cds-text-primary);
+}
+
 .brand-row p {
   margin-top: 16px;
-  color: var(--kr-text-soft);
-  line-height: 1.8;
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
 }
 
 .copy-actions {
@@ -326,10 +346,8 @@ onBeforeUnmount(clearCountdown)
   place-items: center;
   width: 50px;
   height: 50px;
-  border-radius: 18px;
   color: #fff;
-  background: var(--kr-secondary);
-  box-shadow: var(--kr-shadow-clay-soft);
+  background: var(--cds-link-primary);
 }
 
 .steps {
@@ -353,6 +371,11 @@ onBeforeUnmount(clearCountdown)
   flex-wrap: wrap;
 }
 
+.forgot-card {
+  background: var(--cds-background) !important;
+  border-top: 4px solid var(--cds-background-inverse);
+}
+
 @media (max-width: 960px) {
   .forgot-shell {
     grid-template-columns: 1fr;
@@ -360,6 +383,13 @@ onBeforeUnmount(clearCountdown)
 
   .forgot-copy {
     min-height: auto;
+    padding: 40px 24px 32px;
+  }
+
+  .forgot-copy::before {
+    top: 16px;
+    left: 16px;
+    right: 16px;
   }
 }
 

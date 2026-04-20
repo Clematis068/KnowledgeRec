@@ -26,7 +26,7 @@
       </div>
 
       <div class="action-row">
-        <button type="button" class="action-link" @click="$emit('showReason', item.post_id)">
+        <button type="button" class="action-link" @click="$emit('showReason', item)">
           推荐理由
         </button>
         <button
@@ -82,21 +82,31 @@ const thumbnailLabel = computed(() => {
   return domainName.length > 14 ? `${domainName.slice(0, 14)}…` : domainName
 })
 
-const thumbnailSrc = computed(() => createPostThumbnail({
-  title: props.item.title,
-  domainName: props.item.domain_name,
-  tags: props.item.tags || [],
-  seed: props.item.post_id || 0,
-}))
+const thumbnailSrc = computed(() => {
+  if (props.item.image_url) {
+    return props.item.image_url
+  }
+  return createPostThumbnail({
+    title: props.item.title,
+    domainName: props.item.domain_name,
+    tags: props.item.tags || [],
+    seed: props.item.post_id || 0,
+  })
+})
 </script>
 
 <style scoped>
 .rec-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 208px;
-  gap: 24px;
-  padding: 26px 0;
-  border-bottom: 1px solid var(--kr-border);
+  grid-template-columns: minmax(0, 1fr) 224px;
+  gap: 32px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--cds-border-subtle);
+  transition: background-color 0.2s ease;
+}
+
+.rec-card:hover {
+  background: var(--cds-layer-01);
 }
 
 .card-main {
@@ -114,30 +124,32 @@ const thumbnailSrc = computed(() => createPostThumbnail({
 
 .eyebrow,
 .meta-item {
-  color: var(--kr-text-muted);
-  font-size: 13px;
+  color: var(--cds-text-muted);
+  font-size: 12px;
+  letter-spacing: 0.16px;
 }
 
 .eyebrow-sep {
-  color: var(--kr-text-muted);
+  color: var(--cds-text-muted);
 }
 
 .title {
   display: inline-block;
-  margin: 10px 0 12px;
-  font-size: clamp(1.9rem, 3vw, 2.55rem);
-  line-height: 1.06;
-  letter-spacing: -0.04em;
+  margin: 12px 0 10px;
+  font-size: clamp(1.5rem, 2.5vw, 2.3rem);
+  line-height: 1.2;
+  letter-spacing: 0;
+  font-weight: 300;
 }
 
 .title:hover {
-  color: var(--kr-text);
+  color: var(--cds-link-primary-hover);
 }
 
 .summary {
   max-width: 44rem;
-  color: var(--kr-text-soft);
-  line-height: 1.82;
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
   display: -webkit-box;
   overflow: hidden;
   -webkit-line-clamp: 2;
@@ -157,11 +169,10 @@ const thumbnailSrc = computed(() => createPostThumbnail({
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  background: var(--kr-bg-soft, #f5f3ef);
-  border: 1px solid var(--kr-border);
-  color: var(--kr-text);
+  background: var(--cds-blue-10);
+  color: var(--cds-link-primary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .meta-row {
@@ -171,12 +182,12 @@ const thumbnailSrc = computed(() => createPostThumbnail({
 .graph-path {
   margin-top: 14px;
   max-width: 44rem;
-  color: var(--kr-text);
+  color: var(--cds-text-primary);
   font-size: 13px;
-  line-height: 1.7;
-  padding: 10px 12px;
-  border-left: 3px solid var(--kr-text);
-  background: rgba(255, 255, 255, 0.55);
+  line-height: 1.6;
+  padding: 12px 14px;
+  border-left: 3px solid var(--cds-link-primary);
+  background: var(--cds-blue-10);
 }
 
 .action-row {
@@ -187,12 +198,12 @@ const thumbnailSrc = computed(() => createPostThumbnail({
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--kr-text);
-  font-weight: 700;
+  color: var(--cds-link-primary);
+  font-weight: 400;
 }
 
 .action-link--danger {
-  color: var(--kr-text-muted);
+  color: var(--cds-support-error);
 }
 
 .thumb-card {
@@ -200,8 +211,7 @@ const thumbnailSrc = computed(() => createPostThumbnail({
   display: block;
   min-height: 148px;
   overflow: hidden;
-  border: 1px solid var(--kr-border);
-  background: #f3f2ee;
+  background: var(--cds-layer-01);
 }
 
 .thumb-image {
@@ -225,11 +235,10 @@ const thumbnailSrc = computed(() => createPostThumbnail({
   align-items: center;
   min-height: 28px;
   padding: 0 10px;
-  border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
-  color: var(--kr-text-soft);
+  color: var(--cds-text-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   backdrop-filter: blur(6px);
 }
 

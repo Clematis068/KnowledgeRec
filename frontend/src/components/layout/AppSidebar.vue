@@ -117,27 +117,27 @@ function isActive(item) {
 <style scoped>
 .sidebar-shell {
   display: grid;
-  gap: 20px;
-  padding-top: 6px;
+  gap: 24px;
+  padding-top: 4px;
 }
 
 .nav-group,
 .sidebar-section {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .section-title {
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 400;
+  letter-spacing: 0.32px;
   text-transform: uppercase;
-  color: var(--kr-text-muted);
+  color: var(--cds-text-muted);
 }
 
 .sidebar-divider {
   height: 1px;
-  background: var(--kr-border);
+  background: var(--cds-border-subtle);
 }
 
 .nav-item {
@@ -146,23 +146,32 @@ function isActive(item) {
   gap: 14px;
   align-items: start;
   width: 100%;
-  padding: 10px 0;
+  padding: 12px 12px 12px 0;
   border: none;
+  border-left: 3px solid transparent;
   background: transparent;
-  color: var(--kr-text-soft);
+  color: var(--cds-text-secondary);
   text-align: left;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.nav-item:hover {
+  background: var(--cds-layer-01);
+  color: var(--cds-text-primary);
 }
 
 .nav-item.is-active {
-  color: var(--kr-text);
+  border-left-color: var(--cds-link-primary);
+  background: var(--cds-blue-10);
+  color: var(--cds-text-primary);
 }
 
 .nav-item.is-active .nav-label {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .nav-item--secondary {
-  color: var(--kr-text-muted);
+  color: var(--cds-text-secondary);
 }
 
 .nav-icon {
@@ -180,15 +189,15 @@ function isActive(item) {
 }
 
 .nav-label {
-  font-size: 1.08rem;
-  font-weight: 700;
-  line-height: 1.1;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.2;
 }
 
 .nav-subtext {
   font-size: 13px;
   line-height: 1.5;
-  color: var(--kr-text-muted);
+  color: var(--cds-text-muted);
 }
 
 @media (max-width: 1180px) {

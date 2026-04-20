@@ -147,6 +147,86 @@ class RecommendationEngine:
         self.feature_extractor = FeatureExtractor()
         self.ranker = GBDTRanker()
         self.ranker.load()
+        # 评估专用缓存：存放预加载的 user_stage / dislike 信息，
+        # 供 _get_user_stage / _apply_negative_feedback 优先读取。
+        # 生产请求时为空，对现网路径无影响；评估结束需调用 clear_evaluation_cache。
+        self._eval_cache = {'enabled': False, 'user_stages': {}, 'user_dislikes': {}}
+
+    # ── 评估缓存：跨 18 配置复用 user_stage / dislike 预加载 ──
+
+    def warm_evaluation_cache(self, user_ids):
+        """预加载 user_stages 和 dislike 信息，避免评估时每个用户每个配置都重查 DB。
+
+        - user_stage：对同一用户，所有配置间相同。
+        - dislike：同理。mask 环境下查到的是 cutoff 前的 dislike，与生产语义一致。
+        """
+        user_ids = list(user_ids)
+        if not user_ids:
+            self._eval_cache = {'enabled': True, 'user_stages': {}, 'user_dislikes': {}}
+            return
+
+        # ── 批量算 user_stage ──
+        stage_counts = dict(db.session.execute(
+            db.select(
+                UserBehavior.user_id,
+                db.func.count(UserBehavior.id),
+            )
+            .filter(
+                UserBehavior.user_id.in_(user_ids),
+                UserBehavior.behavior_type.in_(['browse', 'like', 'favorite', 'comment']),
+            )
+            .group_by(UserBehavior.user_id)
+        ).all())
+        user_stages = {}
+        for uid in user_ids:
+            c = stage_counts.get(uid, 0)
+            user_stages[uid] = 'cold' if c == 0 else ('warm' if c < 15 else 'active')
+
+        # ── 批量算 dislike 信息 ──
+        dislikes_rows = db.session.scalars(
+            db.select(UserBehavior).filter(
+                UserBehavior.user_id.in_(user_ids),
+                UserBehavior.behavior_type == 'dislike',
+            )
+        ).all()
+        user_to_post_ids = {}
+        for b in dislikes_rows:
+            user_to_post_ids.setdefault(b.user_id, set()).add(b.post_id)
+
+        # 一次性加载所有 dislike 的 Post（含标签），按用户组织
+        all_disliked_post_ids = {pid for pids in user_to_post_ids.values() for pid in pids}
+        post_map = {}
+        if all_disliked_post_ids:
+            from sqlalchemy.orm import joinedload
+            disliked_posts = db.session.scalars(
+                db.select(Post)
+                .options(joinedload(Post.tags))
+                .filter(Post.id.in_(all_disliked_post_ids))
+            ).unique().all()
+            post_map = {p.id: p for p in disliked_posts}
+
+        user_dislikes = {}
+        for uid in user_ids:
+            pids = user_to_post_ids.get(uid)
+            if not pids:
+                user_dislikes[uid] = None  # 无 dislike，短路标记
+                continue
+            posts = [post_map[pid] for pid in pids if pid in post_map]
+            user_dislikes[uid] = {
+                'post_ids': set(pids),
+                'author_ids': {p.author_id for p in posts},
+                'domain_ids': {p.domain_id for p in posts},
+                'tag_names': {tag.name for p in posts for tag in p.tags},
+            }
+
+        self._eval_cache = {
+            'enabled': True,
+            'user_stages': user_stages,
+            'user_dislikes': user_dislikes,
+        }
+
+    def clear_evaluation_cache(self):
+        self._eval_cache = {'enabled': False, 'user_stages': {}, 'user_dislikes': {}}
 
     def recommend(
         self,
@@ -521,19 +601,29 @@ class RecommendationEngine:
 
     def _apply_negative_feedback(self, user_id, results, top_n, post_cache):
         # 黑名单过滤已前置到召回层，这里只处理 dislike 降权
-        stmt = db.select(UserBehavior).filter_by(
-            user_id=user_id, behavior_type='dislike',
-        )
-        disliked_behaviors = db.session.scalars(stmt).all()
-        if not disliked_behaviors:
-            return results[:top_n]
+        # 优先读评估缓存（跨 18 配置复用，避免重复 SQL）
+        if self._eval_cache['enabled'] and user_id in self._eval_cache['user_dislikes']:
+            cached_info = self._eval_cache['user_dislikes'][user_id]
+            if cached_info is None:
+                return results[:top_n]
+            disliked_post_ids = cached_info['post_ids']
+            disliked_author_ids = cached_info['author_ids']
+            disliked_domain_ids = cached_info['domain_ids']
+            disliked_tag_names = cached_info['tag_names']
+        else:
+            stmt = db.select(UserBehavior).filter_by(
+                user_id=user_id, behavior_type='dislike',
+            )
+            disliked_behaviors = db.session.scalars(stmt).all()
+            if not disliked_behaviors:
+                return results[:top_n]
 
-        stmt = db.select(Post).filter(Post.id.in_([b.post_id for b in disliked_behaviors]))
-        disliked_posts = db.session.scalars(stmt).all()
-        disliked_post_ids = {p.id for p in disliked_posts}
-        disliked_author_ids = {p.author_id for p in disliked_posts}
-        disliked_domain_ids = {p.domain_id for p in disliked_posts}
-        disliked_tag_names = {tag.name for p in disliked_posts for tag in p.tags}
+            stmt = db.select(Post).filter(Post.id.in_([b.post_id for b in disliked_behaviors]))
+            disliked_posts = db.session.scalars(stmt).all()
+            disliked_post_ids = {p.id for p in disliked_posts}
+            disliked_author_ids = {p.author_id for p in disliked_posts}
+            disliked_domain_ids = {p.domain_id for p in disliked_posts}
+            disliked_tag_names = {tag.name for p in disliked_posts for tag in p.tags}
 
         rescored = []
         for item in results:
@@ -786,6 +876,10 @@ class RecommendationEngine:
         return preview
 
     def _get_user_stage(self, user_id):
+        if self._eval_cache['enabled']:
+            cached = self._eval_cache['user_stages'].get(user_id)
+            if cached is not None:
+                return cached
         behavior_count = db.session.scalar(
             db.select(db.func.count())
             .select_from(UserBehavior)

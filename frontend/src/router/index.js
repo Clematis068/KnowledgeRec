@@ -91,6 +91,12 @@ const routes = [
         name: 'Evaluation',
         component: () => import('../views/EvaluationPage.vue'),
       },
+      {
+        path: 'admin',
+        name: 'Admin',
+        component: () => import('../views/AdminPage.vue'),
+        meta: { requiresAuth: true, requiresAdmin: true },
+      },
     ],
   },
 ]
@@ -115,6 +121,9 @@ router.beforeEach((to) => {
     const authStore = useAuthStore()
     if (!authStore.token) {
       return { path: '/login', query: { redirect: to.fullPath } }
+    }
+    if (to.meta.requiresAdmin && authStore.user?.role !== 'admin') {
+      return { path: '/recommend' }
     }
   }
 })

@@ -45,31 +45,29 @@ onMounted(async () => {
 
 <style scoped>
 .hot-page {
-  max-width: 980px;
-  margin: 0 auto;
+  max-width: 1040px;
   display: grid;
-  gap: 18px;
+  gap: 24px;
 }
 
 .page-header {
   display: grid;
   gap: 10px;
-  margin-bottom: 16px;
 }
 
 .page-header h2 {
-  font-size: clamp(2rem, 3vw, 3rem);
-  font-weight: 800;
+  font-size: clamp(2rem, 3vw, 3.5rem);
+  font-weight: 300;
   display: flex;
   align-items: center;
   gap: 10px;
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
 }
 
 .page-subtitle {
   font-size: 14px;
-  color: var(--kr-text-soft);
-  line-height: 1.7;
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
 }
 
 .hot-item {
@@ -84,12 +82,10 @@ onMounted(async () => {
   height: 54px;
   display: grid;
   place-items: center;
-  border-radius: 20px;
-  font-size: 1.05rem;
-  font-weight: 900;
-  color: var(--kr-text-soft);
-  background: var(--kr-surface);
-  box-shadow: var(--kr-shadow-clay-soft);
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--cds-text-secondary);
+  background: var(--cds-layer-01);
   flex-shrink: 0;
   margin-top: 12px;
 }

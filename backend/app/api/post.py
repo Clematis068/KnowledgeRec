@@ -223,7 +223,7 @@ def _refresh_user_interest_if_needed(user_id, behavior_type=None, duration=None)
 @post_bp.route('/create', methods=['POST'])
 @login_required
 def create_post():
-    """创建帖子"""
+    """创建帖子：先入库为 pending，机器审核通过后变为 published，不通过则 rejected 并通知作者"""
     data = request.get_json() or {}
     title = data.get('title', '').strip()
     content = data.get('content', '').strip()
@@ -231,17 +231,48 @@ def create_post():
     if not title or not content or not domain_id:
         return jsonify({"error": "标题、正文和领域不能为空"}), 400
 
+    # 先入库，状态为 pending
     post = Post(
         title=title,
         content=content,
         author_id=g.current_user.id,
         domain_id=domain_id,
+        image_url=data.get('image_url'),
+        status='pending',
     )
-
     db.session.add(post)
     db.session.flush()
     _apply_post_context_targets(post, data)
     post.tags = []
+
+    # 机器审核
+    from app.services.content_audit_service import content_audit_service
+    audit = content_audit_service.audit_text(title + '\n' + content)
+
+    if not audit['passed']:
+        post.status = 'rejected'
+        post.reject_reason = audit['details']
+        db.session.commit()
+
+        # 通过通知中心告知用户审核未通过及原因
+        from app.models.notification import create_notification
+        create_notification(
+            user_id=g.current_user.id,
+            sender_id=None,
+            notification_type='system',
+            post_id=post.id,
+            content=f"您的帖子《{title}》未通过机器审核：{audit['details']}",
+        )
+        db.session.commit()
+
+        return jsonify({
+            "error": "内容未通过审核",
+            "labels": audit['labels'],
+            "details": audit['details'],
+        }), 403
+
+    # 机器审核通过，状态变为 published，进入管理员可复审列表
+    post.status = 'published'
     _refresh_post_summary_and_embedding(post)
     db.session.commit()
     _sync_post_to_neo4j(post)
@@ -282,6 +313,7 @@ def update_post(post_id):
     post.title = title
     post.content = content
     post.domain_id = domain_id
+    post.image_url = data.get('image_url')
     _apply_post_context_targets(post, data)
     post.tags = []
     _refresh_post_summary_and_embedding(post)

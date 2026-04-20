@@ -40,3 +40,12 @@ class Config:
     # JWT
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
     JWT_EXPIRATION_HOURS = int(os.getenv('JWT_EXPIRATION_HOURS', '24'))
+
+    # 阿里云内容审核（全民一淘 LightApp）
+    ALIYUN_ACCESS_KEY_ID = os.getenv('ALIYUN_ACCESS_KEY_ID', '')
+    ALIYUN_ACCESS_KEY_SECRET = os.getenv('ALIYUN_ACCESS_KEY_SECRET', '')
+    ALIYUN_AUDIT_WORKSPACE_ID = os.getenv('ALIYUN_AUDIT_WORKSPACE_ID', 'ws-yxjd1v75e5qlded8')
+    ALIYUN_AUDIT_API_KEY = os.getenv('ALIYUN_AUDIT_API_KEY', '')
+    ALIYUN_AUDIT_ENDPOINT = os.getenv(
+        'ALIYUN_AUDIT_ENDPOINT', 'quanmiaolightapp.cn-beijing.aliyuncs.com'
+    )

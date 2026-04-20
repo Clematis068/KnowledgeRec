@@ -291,6 +291,8 @@ def login():
     user = db.session.scalar(db.select(User).filter_by(username=username))
     if not user or not user.check_password(password):
         return jsonify({'error': '用户名或密码错误'}), 401
+    if getattr(user, 'status', 'active') == 'banned':
+        return jsonify({'error': '该账号已被封禁，如有疑问请联系管理员'}), 403
 
     sync_user_login_context(user, login_context)
     db.session.commit()

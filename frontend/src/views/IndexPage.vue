@@ -28,170 +28,366 @@ function logout() {
 
 <template>
   <div class="index-page">
-    <div class="index-center">
-      <!-- 品牌区 -->
-      <div class="index-brand">
-        <span class="brand-icon">
-          <el-icon :size="28"><Connection /></el-icon>
-        </span>
-        <h1 class="brand-title">知识推荐</h1>
-        <p class="brand-subtitle">一个围绕知识分享的社区，找到你关心的内容</p>
-      </div>
+    <section class="hero-band">
+      <div class="hero-shell">
+        <div class="hero-copy">
+          <p class="hero-eyebrow">Knowledge Graph Community</p>
+          <div class="hero-title-row">
+            <span class="hero-mark">
+              <el-icon :size="24"><Connection /></el-icon>
+            </span>
+            <h1>把帖子、作者与兴趣组织成可解释的推荐系统。</h1>
+          </div>
+          <p class="hero-subtitle">
+            知识推荐社区聚合推荐流、热门趋势、搜索与作者关系，让用户在一个统一界面里理解内容为什么出现。
+          </p>
 
-      <!-- 搜索区 -->
-      <div class="index-search">
-        <el-input
-          v-model="searchQuery"
-          size="large"
-          placeholder="搜索帖子、话题或作者..."
-          :prefix-icon="Search"
-          clearable
-          @keyup.enter="handleSearch"
-        />
-      </div>
+          <div class="hero-actions">
+            <el-button type="primary" size="large" @click="goTo('/recommend')">进入推荐流</el-button>
+            <el-button size="large" plain @click="goTo('/hot')">查看热门趋势</el-button>
+          </div>
+        </div>
 
-      <!-- 功能入口 -->
-      <div class="index-entries">
-        <el-button type="primary" size="large" @click="goTo('/recommend')">
-          推荐首页
-        </el-button>
-        <el-button size="large" plain @click="goTo('/hot')">
-          热门趋势
-        </el-button>
-      </div>
+      <aside class="hero-panel">
+          <div class="panel-kicker">Platform Access</div>
+          <div class="panel-grid">
+            <div class="panel-metric">
+              <span class="metric-value">3</span>
+              <span class="metric-label">核心内容视图</span>
+            </div>
+            <div class="panel-metric">
+              <span class="metric-value">24h</span>
+              <span class="metric-label">实时热门刷新</span>
+            </div>
+            <div class="panel-metric">
+              <span class="metric-value">Explainable</span>
+              <span class="metric-label">推荐理由可追踪</span>
+            </div>
+          </div>
 
-      <!-- 认证区 -->
-      <div class="index-auth">
-        <template v-if="authStore.isLoggedIn">
-          <span class="auth-greeting">你好，{{ authStore.username }}</span>
-          <el-button text @click="logout">退出</el-button>
-        </template>
-        <template v-else>
-          <el-button size="large" @click="goTo('/login')">登录</el-button>
-          <el-button size="large" type="primary" @click="goTo('/register')">注册</el-button>
-        </template>
+          <div class="index-search">
+            <div class="search-kicker">Search Entry</div>
+            <label class="search-field">
+              <span class="search-field-icon" aria-hidden="true">
+                <el-icon :size="20"><Search /></el-icon>
+              </span>
+              <input
+                v-model="searchQuery"
+                class="search-field-input"
+                type="text"
+                placeholder="搜索帖子、话题或作者"
+                @keyup.enter="handleSearch"
+              >
+            </label>
+            <el-button class="search-submit" type="primary" @click="handleSearch">执行搜索</el-button>
+          </div>
+        </aside>
       </div>
-    </div>
+    </section>
+
+    <section class="signal-band">
+      <div class="signal-grid">
+        <article class="signal-card">
+          <span class="signal-index">01</span>
+          <h2>推荐流</h2>
+          <p>按推荐、关注、最新三种信号浏览内容，并保留实验调试入口。</p>
+        </article>
+        <article class="signal-card">
+          <span class="signal-index">02</span>
+          <h2>趋势观察</h2>
+          <p>按热度查看当前最受关注的帖子，把浏览入口和热度排序明确分离。</p>
+        </article>
+        <article class="signal-card">
+          <span class="signal-index">03</span>
+          <h2>账号与兴趣</h2>
+          <p>注册时完成邮箱验证与兴趣建模，后续推荐和作者关注都会基于这些信号。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="entry-band">
+      <div class="entry-shell">
+        <div class="entry-copy">
+          <p class="entry-eyebrow">Community Access</p>
+          <h2>{{ authStore.isLoggedIn ? `你好，${authStore.username}` : '登录后可解锁个性化推荐与发帖能力。' }}</h2>
+          <p>
+            {{ authStore.isLoggedIn ? '你可以继续浏览推荐、发布内容，或回到首页查看热点趋势。' : '新用户可以先注册账号并完成兴趣选择，已有账号可直接登录进入推荐页。' }}
+          </p>
+        </div>
+
+        <div class="entry-actions">
+          <template v-if="authStore.isLoggedIn">
+            <el-button type="primary" size="large" @click="goTo('/recommend')">继续浏览</el-button>
+            <el-button size="large" plain @click="goTo('/create-post')">发布内容</el-button>
+            <el-button text size="large" @click="logout">退出登录</el-button>
+          </template>
+          <template v-else>
+            <el-button size="large" plain @click="goTo('/login')">登录</el-button>
+            <el-button size="large" type="primary" @click="goTo('/register')">创建账号</el-button>
+          </template>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
 .index-page {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  background: var(--cds-background);
 }
 
-.index-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.hero-band,
+.signal-band,
+.entry-band {
+  padding: 32px;
+}
+
+.hero-band {
+  padding-top: 64px;
+}
+
+.signal-band {
+  background: var(--cds-layer-01);
+}
+
+.hero-shell,
+.signal-grid,
+.entry-shell {
+  max-width: var(--cds-layout-max-width);
+  margin: 0 auto;
+}
+
+.hero-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 420px;
   gap: 32px;
-  max-width: 640px;
-  width: 100%;
+  align-items: stretch;
 }
 
-/* 品牌区 */
-.index-brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+.hero-copy {
+  display: grid;
+  gap: 24px;
+  padding: 32px;
+  background: var(--cds-background);
+  border-top: 4px solid var(--cds-link-primary);
 }
 
-.brand-icon {
+.hero-eyebrow,
+.panel-kicker,
+.search-kicker,
+.entry-eyebrow {
+  color: var(--cds-text-muted);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.32px;
+  text-transform: uppercase;
+}
+
+.hero-title-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.hero-mark {
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  color: var(--kr-primary);
-  background: var(--kr-primary-soft);
-  margin-bottom: 4px;
+  width: 48px;
+  height: 48px;
+  background: var(--cds-background-inverse);
+  color: #ffffff;
 }
 
-.brand-title {
-  font-size: 2rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  color: var(--kr-text);
-  margin: 0;
+.hero-copy h1 {
+  max-width: 13ch;
+  font-size: clamp(2.75rem, 6vw, 4.75rem);
+  line-height: 1.08;
 }
 
-.brand-subtitle {
-  color: var(--kr-text-muted);
-  font-size: 0.9rem;
-  margin: 0;
+.hero-subtitle,
+.entry-copy p,
+.signal-card p {
+  max-width: 64ch;
+  color: var(--cds-text-secondary);
+  font-size: 16px;
+  line-height: 1.6;
 }
 
-/* 搜索区 */
-.index-search {
-  width: 100%;
-  max-width: 560px;
-}
-
-.index-search :deep(.el-input__wrapper) {
-  border-radius: 999px;
-  padding: 4px 20px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
-}
-
-.index-search :deep(.el-input__wrapper:hover),
-.index-search :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
-}
-
-/* 功能入口 */
-.index-entries {
+.hero-actions,
+.entry-actions {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
-/* 认证区 */
-.index-auth {
-  display: flex;
+.hero-panel {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+  padding: 32px;
+  background: var(--cds-layer-01);
+  border-top: 4px solid var(--cds-background-inverse);
+}
+
+.panel-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.panel-metric {
+  display: grid;
+  gap: 4px;
+  padding: 16px 0;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+.panel-metric:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.metric-value {
+  color: var(--cds-text-primary);
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 400;
+}
+
+.metric-label {
+  color: var(--cds-text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.index-search {
+  display: grid;
+  gap: 12px;
+}
+
+.search-field {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  padding-top: 8px;
-  border-top: 1px solid var(--kr-border);
-  width: 100%;
-  max-width: 320px;
+  min-height: 56px;
+  padding: 0 0 0 4px;
+  background: var(--cds-background);
+  box-shadow: inset 0 -1px 0 var(--cds-border-subtle);
+  transition: box-shadow 0.2s ease;
+}
+
+.search-field:hover {
+  box-shadow: inset 0 -2px 0 var(--cds-text-primary);
+}
+
+.search-field:focus-within {
+  box-shadow: inset 0 -2px 0 var(--cds-link-primary);
+}
+
+.search-field-icon {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  color: var(--cds-text-muted);
 }
 
-.auth-greeting {
-  color: var(--kr-text-soft);
-  font-size: 0.95rem;
+.search-field-input {
+  width: 100%;
+  height: 56px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--cds-text-primary);
+  font-size: 18px;
+  line-height: 1.5;
 }
 
-/* 响应式 */
-@media (max-width: 480px) {
-  .index-page {
-    padding: 16px;
+.search-field-input::placeholder {
+  color: #a8a8a8;
+}
+
+.search-field-input:focus,
+.search-field-input:focus-visible,
+.search-field-input:active {
+  outline: none;
+  box-shadow: none;
+}
+
+.search-submit {
+  width: 100%;
+}
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.signal-card {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  background: var(--cds-background);
+  border-top: 3px solid var(--cds-link-primary);
+}
+
+.signal-index {
+  color: var(--cds-text-muted);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.32px;
+}
+
+.signal-card h2,
+.entry-copy h2 {
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  line-height: 1.2;
+}
+
+.entry-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: end;
+  padding: 24px 0 12px;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+
+@media (max-width: 1024px) {
+  .hero-shell,
+  .entry-shell,
+  .signal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-band,
+  .signal-band,
+  .entry-band {
+    padding: 24px 16px;
   }
 
-  .index-center {
-    gap: 24px;
+  .hero-copy,
+  .hero-panel,
+  .signal-card {
+    padding: 24px;
   }
 
-  .brand-title {
-    font-size: 1.6rem;
+  .hero-title-row {
+    grid-template-columns: 1fr;
   }
 
-  .index-entries {
+  .hero-actions,
+  .entry-actions {
     flex-direction: column;
-    width: 100%;
-    max-width: 560px;
   }
 
-  .index-entries .el-button {
+  .hero-actions .el-button,
+  .entry-actions .el-button {
     width: 100%;
-  }
-
-  .index-auth {
-    max-width: 100%;
   }
 }
 </style>
