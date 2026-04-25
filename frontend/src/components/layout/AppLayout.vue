@@ -45,6 +45,7 @@ import AppSidebar from './AppSidebar.vue'
   gap: 32px;
   align-items: start;
   max-width: var(--cds-layout-max-width);
+  min-width: 1280px;
   margin: 0 auto;
   padding: 32px;
 }
@@ -66,32 +67,4 @@ import AppSidebar from './AppSidebar.vue'
   padding: 0 0 48px;
 }
 
-@media (max-width: 1180px) {
-  .app-body {
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
-
-  .app-aside,
-  .app-header {
-    position: static;
-  }
-
-  .app-aside {
-    min-height: auto;
-    padding: 0 0 20px;
-    border-right: none;
-    border-bottom: 1px solid var(--cds-border-subtle);
-  }
-
-  .app-main-inner {
-    padding: 0 0 24px;
-  }
-}
-
-@media (max-width: 768px) {
-  .app-body {
-    padding: 20px 16px 24px;
-  }
-}
 </style>

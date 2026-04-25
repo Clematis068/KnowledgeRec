@@ -191,18 +191,48 @@ const thumbnailSrc = computed(() => {
 }
 
 .action-row {
-  margin-top: 16px;
+  margin-top: 18px;
+  gap: 12px;
 }
 
 .action-link {
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
   border: none;
-  background: transparent;
-  color: var(--cds-link-primary);
-  font-weight: 400;
+  border-radius: 4px;
+  background: var(--cds-link-primary, #0f62fe);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.action-link::after {
+  content: '→';
+  font-size: 15px;
+  line-height: 1;
+}
+
+.action-link:hover {
+  background: var(--cds-link-primary-hover, #0353e9);
 }
 
 .action-link--danger {
+  background: transparent;
+  color: var(--cds-text-secondary, #525252);
+  border: 1px solid var(--cds-border-strong, #8d8d8d);
+}
+
+.action-link--danger::after {
+  content: '×';
+  font-size: 16px;
+}
+
+.action-link--danger:hover {
+  background: var(--cds-layer-01, #f4f4f4);
   color: var(--cds-support-error);
 }
 

@@ -722,14 +722,28 @@ onBeforeUnmount(() => {
 }
 
 .user-post-item {
+  position: relative;
   margin-bottom: 12px;
 }
 
 .post-manage-actions {
+  position: absolute;
+  bottom: 16px;
+  right: calc(224px + 32px + 16px);
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin: -2px 8px 12px;
+  gap: 8px;
+  z-index: 2;
+}
+
+.post-manage-actions :deep(.el-button) {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .post-manage-actions {
+    right: 16px;
+    bottom: 16px;
+  }
 }
 
 .block-panel {

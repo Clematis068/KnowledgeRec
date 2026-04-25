@@ -115,7 +115,6 @@
           <el-select v-model="postStatusFilter" placeholder="状态筛选" clearable style="width: 140px" @change="loadPosts">
             <el-option label="已发布" value="published" />
             <el-option label="待审核" value="pending" />
-            <el-option label="已拒绝" value="rejected" />
             <el-option label="已删除" value="removed" />
           </el-select>
           <el-button @click="loadPosts">查询</el-button>

@@ -15,20 +15,51 @@ class QwenService:
         )
         self.model = Config.QWEN_MODEL
 
-    def chat(self, message: str, system_prompt: str = None) -> str:
+    def _build_kwargs(self, messages, stream=False, temperature=None, top_p=None, presence_penalty=None, max_tokens=None):
+        kwargs = {"model": self.model, "messages": messages}
+        if stream:
+            kwargs["stream"] = True
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        if top_p is not None:
+            kwargs["top_p"] = top_p
+        if presence_penalty is not None:
+            kwargs["presence_penalty"] = presence_penalty
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        # qwen3 系列默认开启思维链，会大量消耗 token，显式关闭
+        if "qwen3" in self.model.lower():
+            kwargs["extra_body"] = {"enable_thinking": False}
+        return kwargs
+
+    def chat(self, message: str, system_prompt: str = None, **gen_kwargs) -> str:
         """单轮对话"""
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": message})
 
-        kwargs = {"model": self.model, "messages": messages}
-        # qwen3 系列默认开启思维链，会大量消耗 token，显式关闭
-        if "qwen3" in self.model.lower():
-            kwargs["extra_body"] = {"enable_thinking": False}
-
-        response = self.client.chat.completions.create(**kwargs)
+        response = self.client.chat.completions.create(
+            **self._build_kwargs(messages, stream=False, **gen_kwargs)
+        )
         return response.choices[0].message.content
+
+    def chat_stream(self, message: str, system_prompt: str = None, **gen_kwargs):
+        """流式单轮对话，逐 token 产出 delta 文本。"""
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+
+        stream = self.client.chat.completions.create(
+            **self._build_kwargs(messages, stream=True, **gen_kwargs)
+        )
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
 
     def chat_with_history(self, messages: list[dict]) -> str:
         """多轮对话，messages 格式: [{"role": "user/assistant/system", "content": "..."}]"""

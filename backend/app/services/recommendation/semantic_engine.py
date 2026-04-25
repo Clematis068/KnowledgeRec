@@ -13,6 +13,7 @@ from app.models.behavior import UserBehavior
 from app.services.qwen_service import qwen_service
 from app.services.redis_service import redis_service
 from app.services.user_interest_service import BEHAVIOR_PROFILE_WEIGHTS
+from app.services.vector_index import post_vector_index
 from app.utils.helpers import cosine_similarity, min_max_normalize
 
 logger = logging.getLogger(__name__)
@@ -46,45 +47,23 @@ class SemanticEngine:
             return {}
 
         # Stage 1: 长短期兴趣双路语义召回
+        # - 无外部候选约束时：走 Faiss 向量索引（全量搜索，O(log N)）
+        # - 有候选约束时（候选集 ≤200，评估/上游筛选场景）：走 brute-force，省去索引开销
         if candidate_ids:
-            stmt = db.select(Post).filter(Post.id.in_(candidate_ids))
-            if exclude_post_ids:
-                stmt = stmt.filter(~Post.id.in_(exclude_post_ids))
-            posts = db.session.scalars(stmt).all()
+            embedding_scores = self._brute_score_on_candidates(
+                profile, candidate_ids, exclude_post_ids,
+            )
         else:
-            # 根据用户兴趣领域 + 时间窗口预过滤，缩小候选集
-            domain_ids = self._get_user_domain_ids(user_id, user)
-            base_filter = [Post.content_embedding.isnot(None)]
-            if exclude_post_ids:
-                base_filter.append(~Post.id.in_(exclude_post_ids))
-            if domain_ids:
-                cutoff = datetime.now() - timedelta(days=90)
-                stmt = db.select(Post).filter(
-                    *base_filter,
-                    Post.domain_id.in_(domain_ids),
-                    Post.created_at >= cutoff,
+            embedding_scores = self._faiss_score(
+                profile,
+                k=max(top_n * 2, 300),
+                exclude_ids=exclude_post_ids,
+            )
+            # 索引尚未就绪 / 为空时回退到原始暴力路径（只会在极冷启动命中）
+            if not embedding_scores:
+                embedding_scores = self._brute_score_fallback(
+                    profile, user_id, user, exclude_post_ids,
                 )
-                posts = db.session.scalars(stmt).all()
-
-                # 渐进回退：候选不足时放宽条件
-                if len(posts) < 50:
-                    stmt = db.select(Post).filter(
-                        *base_filter,
-                        Post.domain_id.in_(domain_ids),
-                    )
-                    posts = db.session.scalars(stmt).all()
-                if len(posts) < 50:
-                    stmt = db.select(Post).filter(*base_filter)
-                    posts = db.session.scalars(stmt).all()
-            else:
-                stmt = db.select(Post).filter(*base_filter)
-                posts = db.session.scalars(stmt).all()
-
-        embedding_scores = {}
-        for post in posts:
-            if not post.content_embedding:
-                continue
-            embedding_scores[post.id] = self._score_post(profile, post)
 
         embedding_scores = min_max_normalize(embedding_scores)
 
@@ -115,6 +94,85 @@ class SemanticEngine:
         final.update(llm_combined)
 
         return dict(sorted(final.items(), key=lambda x: -x[1])[:top_n])
+
+    # ──────────────── 候选检索 ────────────────
+
+    def _faiss_score(self, profile, k, exclude_ids):
+        """用 Faiss 向量索引完成短/长期双路检索，线性加权合并。
+
+        cosine ∈ [-1, 1] → 映射到 [0, 1] 对齐权重。
+        长期兴趣多簇心时，取 max（最接近的兴趣簇胜出），与原 `_score_post` 语义一致。
+        """
+        short_vec = profile.get("short_term_embedding")
+        long_vec = profile.get("long_term_embedding")
+        centroids = profile.get("interest_centroids") or ([long_vec] if long_vec else [])
+
+        scores = {}
+        total_weight = 0.0
+
+        if short_vec:
+            for pid, cos in post_vector_index.search(short_vec, k=k, exclude_ids=exclude_ids):
+                scores[pid] = scores.get(pid, 0.0) + SHORT_TERM_WEIGHT * ((cos + 1) / 2)
+            total_weight += SHORT_TERM_WEIGHT
+
+        if centroids:
+            long_per_post = {}
+            for vec in centroids:
+                if not vec:
+                    continue
+                for pid, cos in post_vector_index.search(vec, k=k, exclude_ids=exclude_ids):
+                    val = (cos + 1) / 2
+                    if val > long_per_post.get(pid, 0.0):
+                        long_per_post[pid] = val
+            if long_per_post:
+                for pid, val in long_per_post.items():
+                    scores[pid] = scores.get(pid, 0.0) + LONG_TERM_WEIGHT * val
+                total_weight += LONG_TERM_WEIGHT
+
+        if total_weight <= 0:
+            return {}
+        return {pid: v / total_weight for pid, v in scores.items()}
+
+    def _brute_score_on_candidates(self, profile, candidate_ids, exclude_post_ids):
+        """候选集受限时（上游已筛过），直接 DB 批量加载再逐一打分。"""
+        stmt = db.select(Post).filter(Post.id.in_(candidate_ids))
+        if exclude_post_ids:
+            stmt = stmt.filter(~Post.id.in_(exclude_post_ids))
+        posts = db.session.scalars(stmt).all()
+        scores = {}
+        for post in posts:
+            if not post.content_embedding:
+                continue
+            scores[post.id] = self._score_post(profile, post)
+        return scores
+
+    def _brute_score_fallback(self, profile, user_id, user, exclude_post_ids):
+        """Faiss 索引为空时的极冷启动回退（与旧路径等价，仅保留不常走到）。"""
+        domain_ids = self._get_user_domain_ids(user_id, user)
+        base_filter = [Post.content_embedding.isnot(None)]
+        if exclude_post_ids:
+            base_filter.append(~Post.id.in_(exclude_post_ids))
+        if domain_ids:
+            cutoff = datetime.now() - timedelta(days=90)
+            stmt = db.select(Post).filter(
+                *base_filter, Post.domain_id.in_(domain_ids), Post.created_at >= cutoff,
+            )
+            posts = db.session.scalars(stmt).all()
+            if len(posts) < 50:
+                stmt = db.select(Post).filter(*base_filter, Post.domain_id.in_(domain_ids))
+                posts = db.session.scalars(stmt).all()
+            if len(posts) < 50:
+                stmt = db.select(Post).filter(*base_filter)
+                posts = db.session.scalars(stmt).all()
+        else:
+            stmt = db.select(Post).filter(*base_filter)
+            posts = db.session.scalars(stmt).all()
+        scores = {}
+        for post in posts:
+            if not post.content_embedding:
+                continue
+            scores[post.id] = self._score_post(profile, post)
+        return scores
 
     def _llm_relevance_score(self, user, post):
         """调用千问为用户-帖子匹配打分 (0-10)"""

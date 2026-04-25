@@ -410,21 +410,4 @@ onBeforeUnmount(() => {
   background: var(--cds-layer-01);
 }
 
-@media (max-width: 1180px) {
-  .recommend-shell {
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-}
-
-@media (max-width: 720px) {
-  .feed-toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .toolbar-actions {
-    justify-content: flex-start;
-  }
-}
 </style>

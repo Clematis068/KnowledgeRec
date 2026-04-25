@@ -57,6 +57,45 @@ export function getRecommendReason(userId, postId, channelScores = null) {
   return request.get(`/recommend/${userId}/reason/${postId}`, { params })
 }
 
+/**
+ * 流式获取推荐理由（SSE）
+ *
+ * 事件回调：
+ *   onMeta({ graph_paths, graph_path?, top_channels? })  — 证据面板立即渲染
+ *   onDelta(textChunk)                                    — LLM 增量文本
+ *   onDone({ reason, cached })                            — 结束
+ *   onError(msg)
+ *
+ * 返回 () => void，调用可主动关闭连接。
+ */
+export function streamRecommendReason(userId, postId, channelScores, handlers = {}) {
+  const params = new URLSearchParams()
+  if (channelScores) {
+    for (const key of ['cf', 'swing', 'graph', 'semantic', 'knowledge', 'hot']) {
+      const val = channelScores[`${key}_score`]
+      if (val !== undefined && val !== null) params.set(`${key}_score`, val)
+    }
+  }
+  const qs = params.toString()
+  const url = `/api/recommend/${userId}/reason/${postId}/stream${qs ? `?${qs}` : ''}`
+  const es = new EventSource(url)
+
+  es.addEventListener('meta', (e) => handlers.onMeta?.(JSON.parse(e.data)))
+  es.addEventListener('delta', (e) => handlers.onDelta?.(JSON.parse(e.data).text))
+  es.addEventListener('done', (e) => {
+    handlers.onDone?.(JSON.parse(e.data))
+    es.close()
+  })
+  es.addEventListener('error', (e) => {
+    // EventSource 在流结束后也会触发 error，用 readyState 区分真实错误
+    if (es.readyState === EventSource.CLOSED) return
+    handlers.onError?.(e?.data ? JSON.parse(e.data).message : '连接中断')
+    es.close()
+  })
+
+  return () => es.close()
+}
+
 /** 触发预计算 */
 export function triggerPrecompute() {
   return request.post('/precompute')

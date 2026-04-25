@@ -47,22 +47,22 @@ function goToDashboard() {
         <div class="login-copy-main">
           <p class="copy-eyebrow">Member Access</p>
           <h1>欢迎回来</h1>
-          <p class="copy-lead">登录后即可进入推荐流，继续浏览关注内容、热门趋势与作者关系。</p>
+          <p class="copy-lead">登录后即可进入知识社区。</p>
 
           <div class="copy-points">
             <div class="copy-point">
               <span class="point-index">01</span>
-              <p>进入个性化推荐页，按推荐、关注、最新三种视图浏览内容。</p>
+              <p>个性化推荐展示。</p>
             </div>
             <div class="copy-point">
               <span class="point-index">02</span>
-              <p>继续追踪感兴趣的作者与话题，查看社区热点与实时更新。</p>
+              <p>与社区内的朋友们探讨交流</p>
             </div>
           </div>
         </div>
 
         <div class="copy-footer">
-          <p class="copy-footer-text">首次使用的话，先创建账号并完成兴趣选择。</p>
+          <p class="copy-footer-text">首次使用的话，先创建账号。</p>
           <div class="copy-actions">
             <router-link to="/">
               <el-button plain size="large">返回首页</el-button>

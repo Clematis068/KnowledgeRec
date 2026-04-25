@@ -15,6 +15,11 @@ export function markRead(notificationId) {
   return request.put(`/notification/read/${notificationId}`)
 }
 
+/** 删除单条通知 */
+export function deleteNotification(notificationId) {
+  return request.delete(`/notification/${notificationId}`)
+}
+
 /** 全部已读 */
 export function markAllRead(type = '') {
   return request.put('/notification/read-all', null, { params: { type } })

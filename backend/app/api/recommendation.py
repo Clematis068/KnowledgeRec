@@ -1,12 +1,25 @@
-from flask import Blueprint, request, jsonify, g
+import json
+
+from flask import Blueprint, request, jsonify, g, Response, stream_with_context
 from sqlalchemy.orm import joinedload
 
 from app import db
 from app.models.post import Post
 from app.services.recommendation import recommendation_engine
 from app.services.qwen_service import qwen_service
+from app.services.redis_service import redis_service
 from app.utils.auth import login_required
 from app.utils.context import build_request_context
+
+REASON_CACHE_TTL = 3600  # 推荐理由缓存 1 小时
+
+# 推荐理由专用采样：高温度+高 top_p 让措辞更多样，presence_penalty 抑制模板腔复读
+REASON_GEN_KWARGS = {
+    "temperature": 0.95,
+    "top_p": 0.92,
+    "presence_penalty": 0.6,
+    "max_tokens": 120,
+}
 
 rec_bp = Blueprint('recommendation', __name__)
 
@@ -212,70 +225,156 @@ def _top_channels(channel_scores, k=2, min_score=1e-3):
     return filtered[:k]
 
 
-@rec_bp.route('/recommend/<int:user_id>/reason/<int:post_id>', methods=['GET'])
-def get_recommendation_reason(user_id, post_id):
-    """LLM 生成推荐理由。
-
-    支持前端把卡片里已有的召回通道分数（cf/graph/semantic 等）透传回来，
-    结合图路径证据一起喂给 LLM，让理由比"通用文案"更具体。
-    """
+def _build_reason_context(user_id, post_id):
+    """加载用户+帖子+图路径+通道分数，返回 (payload_meta, prompt) 或 (None, error_msg, status)。"""
     from app.models.user import User
 
     user = db.session.get(User, user_id)
     post = db.session.get(Post, post_id)
     if not user or not post:
-        return jsonify({"error": "用户或帖子不存在"}), 404
+        return None, "用户或帖子不存在", 404
 
-    # 从 query 中读取各通道分数（可选）
     channel_scores = {}
     for channel in _CHANNEL_LABELS:
         val = request.args.get(f'{channel}_score', type=float)
         if val is not None:
             channel_scores[channel] = val
 
-    # 图路径证据（单条查询，已批量过）
-    graph_path = None
-    try:
-        paths = recommendation_engine.graph.explain_paths(user_id, [post_id])
-        graph_path = paths.get(post_id)
-    except Exception:
-        graph_path = None
-
-    # 组装 prompt
-    evidence_lines = []
     top_channels = _top_channels(channel_scores)
-    if top_channels:
-        evidence_lines.append(
-            "主要召回来源：" + "；".join(
-                f"{_CHANNEL_LABELS[c]}（归一化得分 {s:.2f}）" for c, s in top_channels
-            )
+
+    graph_paths = []
+    try:
+        context = recommendation_engine.graph.retrieve_paths_context(
+            user_id, [post_id], max_per_post=3,
         )
-    if graph_path and graph_path.get('text'):
-        evidence_lines.append(f"图谱证据：{graph_path['text']}")
-    evidence_block = "\n".join(evidence_lines) if evidence_lines else "（无额外通道证据，按兴趣画像解释即可）"
+        graph_paths = (context.get(post_id) or {}).get('paths', [])
+    except Exception:
+        graph_paths = []
+
+    if graph_paths:
+        retrieved_block = "\n".join(
+            f"  [{idx + 1}] ({p['type']}) {p.get('text', '')}"
+            for idx, p in enumerate(graph_paths)
+        )
+    else:
+        retrieved_block = "  （未检索到显式图路径证据）"
+
+    channel_block = "；".join(
+        f"{_CHANNEL_LABELS[c]}（{s:.2f}）" for c, s in top_channels
+    ) if top_channels else "（无）"
 
     prompt = (
-        "你是推荐系统的解释模块。请基于以下信息，用 1-2 句简洁自然的中文向用户说明"
-        "为什么推荐这篇文章。用用户能理解的语言表达，避免直接提及算法名词、分数、召回通道等字面。\n\n"
-        f"用户兴趣：{user.interest_profile or user.bio or '未知'}\n"
-        f"推荐文章：{post.title}\n"
-        f"文章摘要：{post.summary or '无'}\n"
-        f"推荐依据：\n{evidence_block}\n"
+        "你是一个懂用户的朋友，正向 TA 顺手安利一篇可能感兴趣的帖子。\n"
+        "语气要像微信里跟人聊天：自然、轻松、有温度，可以用 '你' '哈' '嗯'，"
+        "可以用 '—' 破折号和问号带点情绪，但别夸张别卖萌。\n"
+        "硬性要求：\n"
+        "  • 必须基于 <retrieved_paths> 中的事实（朋友名、标签名、种子帖标题），一个字都不能编；\n"
+        "  • 不出现 '算法' '召回' '分数' '图谱' '推荐系统' 这类词；\n"
+        "  • 不写 '为你推荐' '向你推送' 这种平台腔；\n"
+        "  • 1-2 句话，40-80 字，直接说，不要开场白。\n\n"
+        "风格示例（仅供模仿语感，内容别抄）：\n"
+        "  好 ✓：你关注的张三刚收藏了这篇，而且跟你之前看的《深度学习入门》都在聊 Transformer，应该合你胃口。\n"
+        "  好 ✓：最近你在追「向量数据库」这个话题，这篇正好把 Faiss 和 Milvus 做了一次正面对比，可以顺手看看。\n"
+        "  差 ✗：基于您的兴趣偏好，系统为您智能推荐本篇优质内容。（太公文）\n"
+        "  差 ✗：哇塞！这篇超棒的！快来看看吧～（太油腻）\n\n"
+        f"<user_profile>{user.interest_profile or user.bio or '未提供'}</user_profile>\n"
+        f"<candidate_post>\n  标题：{post.title}\n  摘要：{post.summary or '无'}\n</candidate_post>\n"
+        f"<retrieved_paths>\n{retrieved_block}\n</retrieved_paths>\n"
+        f"<channel_signals>{channel_block}</channel_signals>\n"
     )
 
+    # 记录 prompt 变量，方便调用处传入采样参数
+    meta = {"graph_paths": graph_paths}
+    if graph_paths:
+        meta["graph_path"] = graph_paths[0]
+    if top_channels:
+        meta["top_channels"] = [
+            {"channel": c, "label": _CHANNEL_LABELS[c], "score": round(s, 4)}
+            for c, s in top_channels
+        ]
+    channel_sig = ','.join(c for c, _ in top_channels) or 'none'
+    cache_key = f"rec_reason:{user_id}:{post_id}:{channel_sig}"
+    return meta, prompt, cache_key
+
+
+@rec_bp.route('/recommend/<int:user_id>/reason/<int:post_id>', methods=['GET'])
+def get_recommendation_reason(user_id, post_id):
+    """Graph-RAG 推荐理由生成（非流式，兼容保留）。"""
+    ctx = _build_reason_context(user_id, post_id)
+    if ctx[0] is None:
+        return jsonify({"error": ctx[1]}), ctx[2]
+    meta, prompt, cache_key = ctx
+
+    cached = redis_service.get_json(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
     try:
-        reason = qwen_service.chat(prompt)
-        payload = {"reason": reason}
-        if graph_path:
-            payload["graph_path"] = graph_path
-        if top_channels:
-            payload["top_channels"] = [
-                {"channel": c, "label": _CHANNEL_LABELS[c], "score": round(s, 4)}
-                for c, s in top_channels
-            ]
+        reason = qwen_service.chat(prompt, **REASON_GEN_KWARGS)
+        payload = {"reason": reason, **meta}
+        redis_service.set_json(cache_key, payload, ttl=REASON_CACHE_TTL)
         return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _sse(event, data):
+    """封装 SSE 消息帧。"""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@rec_bp.route('/recommend/<int:user_id>/reason/<int:post_id>/stream', methods=['GET'])
+def get_recommendation_reason_stream(user_id, post_id):
+    """Graph-RAG 推荐理由流式输出（SSE）。
+
+    事件序列：
+      meta  → 一次性下发 graph_paths / top_channels（前端立即渲染证据面板）
+      delta → LLM 流式增量文本（首字 < 500ms）
+      done  → 结束事件，payload = 完整文本
+      error → 异常
+    缓存命中时一次性 emit 全文 delta + done，延迟 ~5ms。
+    """
+    ctx = _build_reason_context(user_id, post_id)
+    if len(ctx) == 3 and isinstance(ctx[2], int):
+        return jsonify({"error": ctx[1]}), ctx[2]
+    meta, prompt, cache_key = ctx
+
+    cached = redis_service.get_json(cache_key)
+
+    @stream_with_context
+    def generate():
+        yield _sse('meta', meta)
+
+        if cached is not None and cached.get('reason'):
+            yield _sse('delta', {"text": cached['reason']})
+            yield _sse('done', {"reason": cached['reason'], "cached": True})
+            return
+
+        chunks = []
+        try:
+            for delta in qwen_service.chat_stream(prompt, **REASON_GEN_KWARGS):
+                chunks.append(delta)
+                yield _sse('delta', {"text": delta})
+        except Exception as e:
+            yield _sse('error', {"message": str(e)})
+            return
+
+        full = ''.join(chunks)
+        payload = {"reason": full, **meta}
+        try:
+            redis_service.set_json(cache_key, payload, ttl=REASON_CACHE_TTL)
+        except Exception:
+            pass
+        yield _sse('done', {"reason": full, "cached": False})
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',  # 关闭反代层缓冲，保证实时推
+        },
+    )
 
 
 @rec_bp.route('/precompute', methods=['POST'])

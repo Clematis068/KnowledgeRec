@@ -46,6 +46,17 @@ function removeTag(tagId) {
   localForm.tag_ids = localForm.tag_ids.filter((id) => id !== tagId)
 }
 
+function getGroupSelected(group) {
+  const ids = new Set((group.tags || []).map((tag) => tag.id))
+  return localForm.tag_ids.filter((id) => ids.has(id))
+}
+
+function setGroupSelected(group, nextIds) {
+  const ids = new Set((group.tags || []).map((tag) => tag.id))
+  const others = localForm.tag_ids.filter((id) => !ids.has(id))
+  localForm.tag_ids = [...others, ...nextIds]
+}
+
 watch(
   () => props.visible,
   (visible) => {
@@ -76,7 +87,7 @@ function saveProfile() {
   <el-dialog
     :model-value="visible"
     title="编辑资料"
-    width="720px"
+    width="780px"
     class="profile-edit-dialog"
     draggable
     overflow
@@ -144,20 +155,39 @@ function saveProfile() {
       <section class="panel tag-panel">
         <div class="panel-head">
           <h3>兴趣标签</h3>
-          <p>按领域勾选，推荐结果会更贴近你的主题偏好。</p>
+          <p>从每个领域的下拉列表中挑选标签，推荐结果会更贴近你的主题偏好。</p>
         </div>
 
         <div v-if="tagGroups.length" class="group-list">
           <section v-for="group in tagGroups" :key="group.domain.id" class="group-card">
-            <div class="group-head">
-              <strong>{{ group.domain.name }}</strong>
+            <header class="group-head">
+              <div class="group-title">
+                <span class="domain-badge">领域</span>
+                <strong>{{ group.domain.name }}</strong>
+                <span class="group-count">{{ (group.tags || []).length }} 个标签</span>
+              </div>
               <p>{{ group.domain.description || '选择这个领域里你更常看的主题。' }}</p>
+            </header>
+            <div class="group-tags">
+              <el-select
+                :model-value="getGroupSelected(group)"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                filterable
+                clearable
+                placeholder="选择该领域下感兴趣的标签"
+                class="full-width tag-select"
+                @update:model-value="setGroupSelected(group, $event)"
+              >
+                <el-option
+                  v-for="tag in group.tags"
+                  :key="tag.id"
+                  :label="tag.name"
+                  :value="tag.id"
+                />
+              </el-select>
             </div>
-            <el-checkbox-group v-model="localForm.tag_ids" class="checkbox-grid">
-              <el-checkbox v-for="tag in group.tags" :key="tag.id" :label="tag.id">
-                {{ tag.name }}
-              </el-checkbox>
-            </el-checkbox-group>
           </section>
         </div>
         <el-empty v-else description="暂无兴趣标签数据" :image-size="72" />
@@ -186,13 +216,13 @@ function saveProfile() {
 }
 
 .dialog-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
 }
 
 .panel {
-  padding: 20px;
+  padding: 24px 26px;
   border: 1px solid var(--kr-border);
   border-radius: 24px;
   background: var(--kr-surface);
@@ -200,7 +230,7 @@ function saveProfile() {
 }
 
 .panel-head {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .panel-head h3 {
@@ -221,12 +251,12 @@ function saveProfile() {
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 
 .field-block + .field-block,
 .selected-panel {
-  margin-top: 16px;
+  margin-top: 20px;
 }
 
 .field-label {
@@ -241,11 +271,22 @@ function saveProfile() {
   width: 100%;
 }
 
-.selected-panel,
-.group-card {
-  padding: 16px;
+.selected-panel {
+  padding: 16px 18px;
   border-radius: 18px;
-  background: #fff0e8;
+  background: transparent;
+  border: 1px solid var(--kr-border);
+}
+
+.group-card {
+  padding: 18px 20px 20px;
+  border-radius: 18px;
+  background: transparent;
+  border: 1px solid var(--kr-border);
+}
+
+.group-card + .group-card {
+  margin-top: 0;
 }
 
 .selected-head {
@@ -270,33 +311,57 @@ function saveProfile() {
 
 .group-list {
   display: grid;
-  gap: 14px;
-  max-height: min(50vh, 420px);
+  gap: 16px;
+  max-height: min(56vh, 460px);
   overflow: auto;
-  padding-right: 4px;
+  padding-right: 6px;
 }
 
 .group-head {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--kr-border);
 }
 
-.group-head strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 16px;
+.group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 
-.checkbox-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px 12px;
+.domain-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--kr-primary, #ff7e3d);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
 }
 
-.checkbox-grid :deep(.el-checkbox) {
-  margin-right: 0;
-  padding: 10px 12px;
+.group-title strong {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.group-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kr-text-soft);
+}
+
+.group-tags {
+  padding-top: 4px;
+}
+
+.tag-select :deep(.el-select__wrapper) {
   border-radius: 14px;
   background: #fff;
+  min-height: 40px;
 }
 
 .dialog-footer {
@@ -307,7 +372,6 @@ function saveProfile() {
 }
 
 @media (max-width: 900px) {
-  .dialog-layout,
   .field-grid {
     grid-template-columns: 1fr;
   }

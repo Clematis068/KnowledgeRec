@@ -41,13 +41,33 @@
           </div>
           <div class="noti-time">{{ formatTime(item.created_at) }}</div>
         </div>
-        <span v-if="!item.is_read" class="unread-dot" />
+        <div class="noti-actions">
+          <button class="delete-btn" @click.stop="handleDeleteNotification(item)">删除</button>
+          <span v-if="!item.is_read" class="unread-dot" />
+        </div>
       </div>
       <el-empty v-if="!loading && notifications.length === 0" description="暂无通知" />
       <div v-if="hasMore" class="load-more">
         <el-button text :loading="loading" @click="loadMore">加载更多</el-button>
       </div>
     </div>
+
+    <!-- 系统通知详情 -->
+    <el-dialog v-model="systemNoticeVisible" title="系统通知详情" width="560px">
+      <div v-if="systemNoticeText" class="system-notice-summary">
+        {{ systemNoticeText }}
+      </div>
+      <div v-if="systemNoticeEntries.length" class="system-notice-entries">
+        <div v-for="entry in systemNoticeEntries" :key="entry.label" class="system-notice-entry">
+          <span class="system-entry-label">{{ entry.label }}</span>
+          <span class="system-entry-value">{{ entry.value }}</span>
+        </div>
+      </div>
+      <el-empty v-else-if="!systemNoticeText" description="暂无可展示内容" />
+      <template #footer>
+        <el-button type="primary" @click="systemNoticeVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 私信 Tab -->
     <div v-if="activeTab === 'message'" class="message-section">
@@ -194,10 +214,11 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ArrowLeft, UserFilled, Picture, Share } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getNotifications,
   markRead,
+  deleteNotification,
   markAllRead,
   getConversations,
   getMessageDetail,
@@ -242,6 +263,8 @@ const previewImageUrl = ref(null)
 const showSharePostDialog = ref(false)
 const sharePostId = ref('')
 const sharePostQuery = ref('')
+const systemNoticeVisible = ref(false)
+const systemNoticePayload = ref(null)
 
 // 新建对话搜索
 const newChatQuery = ref('')
@@ -258,10 +281,102 @@ function actionText(item) {
     like: '赞了你的帖子',
     favorite: '收藏了你的帖子',
     comment: '评论了你的帖子',
-    system: item.content || '系统通知',
+  }
+  if (item.type === 'system') {
+    const payload = parseSystemContent(item.content)
+    const fallback = typeof item.content === 'string' && !item.content.trim().startsWith('{')
+      ? item.content
+      : '系统通知'
+    return systemNotificationSummary(payload, fallback)
   }
   return map[item.type] || '向你发来了通知'
 }
+
+function parseSystemContent(content) {
+  if (!content || typeof content !== 'string') {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(content)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function isDisplayableValue(value) {
+  if (value === true || value === '是' || value === 1) return true
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') return value.trim().length > 0
+  if (Array.isArray(value)) return value.some((item) => isDisplayableValue(item))
+  if (value && typeof value === 'object') return Object.keys(value).length > 0
+  return false
+}
+
+function formatDisplayValue(value) {
+  if (value === true || value === '是' || value === 1) return '是'
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number') return String(value)
+  if (Array.isArray(value)) return value.map((item) => formatDisplayValue(item)).filter(Boolean).join('、')
+  if (value && typeof value === 'object') return JSON.stringify(value, null, 2)
+  return ''
+}
+
+function pushDisplayEntry(entries, label, value) {
+  if (!isDisplayableValue(value)) return
+  entries.push({ label, value: formatDisplayValue(value) })
+}
+
+function systemNotificationSummary(payload, fallback = '系统通知') {
+  if (!payload) {
+    return fallback || '系统通知'
+  }
+  if (payload.type === 'post_audit_notice') {
+    const title = payload.post_title || '未知帖子'
+    return `帖子《${title}》未通过审核`
+  }
+  return payload.reason || fallback || '系统通知'
+}
+
+function buildSystemNoticeEntries(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return []
+  }
+
+  const entries = []
+  pushDisplayEntry(entries, '来源', payload.source)
+  pushDisplayEntry(entries, '帖子ID', payload.post_id)
+  pushDisplayEntry(entries, '帖子标题', payload.post_title)
+  pushDisplayEntry(entries, '审核结果', payload.passed ? '是' : '')
+  pushDisplayEntry(entries, '拒绝原因', payload.reason)
+  pushDisplayEntry(entries, '审核标签', payload.audit_labels)
+
+  if (payload.audit_details && typeof payload.audit_details === 'object' && !Array.isArray(payload.audit_details)) {
+    Object.entries(payload.audit_details).forEach(([key, value]) => {
+      pushDisplayEntry(entries, `审核详情.${key}`, value)
+    })
+  } else {
+    pushDisplayEntry(entries, '审核详情', payload.audit_details)
+  }
+
+  return entries
+}
+
+const systemNoticeSummary = computed(() => {
+  const payload = systemNoticePayload.value
+  if (!payload) return ''
+  if (typeof payload === 'string') return payload
+  if (payload.type === 'post_audit_notice') {
+    return payload.reason || systemNotificationSummary(payload, '系统通知')
+  }
+  return systemNotificationSummary(payload, '系统通知')
+})
+
+const systemNoticeEntries = computed(() => buildSystemNoticeEntries(systemNoticePayload.value))
+const systemNoticeText = computed(() => {
+  const value = systemNoticeSummary.value
+  return typeof value === 'string' ? value.trim() : ''
+})
 
 function formatTime(isoStr) {
   if (!isoStr) return ''
@@ -302,10 +417,30 @@ async function handleNotificationClick(item) {
     item.is_read = true
     notificationStore.fetchUnreadCount()
   }
+  if (item.type === 'system') {
+    systemNoticePayload.value = parseSystemContent(item.content) || item.content || null
+    systemNoticeVisible.value = true
+    return
+  }
   if (item.post_id) {
     router.push(`/posts/${item.post_id}`)
   } else if (item.sender_id && item.type === 'follow') {
     router.push(`/users/${item.sender_id}`)
+  }
+}
+
+async function handleDeleteNotification(item) {
+  try {
+    await ElMessageBox.confirm('确定删除这条通知吗？', '删除通知', { type: 'warning' })
+    await deleteNotification(item.id)
+    notifications.value = notifications.value.filter((n) => n.id !== item.id)
+    total.value = Math.max(0, total.value - 1)
+    notificationStore.fetchUnreadCount()
+    ElMessage.success('通知已删除')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      // 错误已由拦截器处理
+    }
   }
 }
 
@@ -665,6 +800,25 @@ onBeforeUnmount(() => {
   color: var(--kr-text-muted);
 }
 
+.noti-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.delete-btn {
+  border: none;
+  background: transparent;
+  color: var(--kr-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.delete-btn:hover {
+  color: var(--kr-danger, #f56c6c);
+}
+
 .unread-dot {
   width: 8px;
   height: 8px;
@@ -675,6 +829,42 @@ onBeforeUnmount(() => {
 .load-more {
   text-align: center;
   padding: 12px 0;
+}
+
+.system-notice-summary {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.6;
+  margin-bottom: 14px;
+  color: var(--kr-text);
+}
+
+.system-notice-entries {
+  display: grid;
+  gap: 10px;
+}
+
+.system-notice-entry {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--kr-border);
+  border-radius: 10px;
+  background: var(--kr-surface-alt);
+}
+
+.system-entry-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--kr-text-soft);
+}
+
+.system-entry-value {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--kr-text);
 }
 
 /* 新建对话搜索 */

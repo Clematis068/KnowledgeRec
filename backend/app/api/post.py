@@ -1,3 +1,4 @@
+import json
 import logging
 import threading
 
@@ -10,9 +11,14 @@ from app.models.behavior import (
     UserBlockedAuthor,
     UserBlockedDomain,
 )
+from app.models.notification import Notification, Message
 from app.models.tag import Tag
 from app.services.tag_taxonomy_service import tag_taxonomy_service
 from app.services.user_interest_service import user_interest_service
+from app.utils.notification_payloads import (
+    build_audit_rejection_reason,
+    build_rejection_notification_content,
+)
 from app.utils.auth import login_required, optional_login
 from app.utils.context import normalize_context_targets, normalize_region_code, normalize_time_slot
 from app.utils.content_filter import apply_post_visibility_query, is_post_visible_to_user
@@ -65,6 +71,14 @@ def _refresh_post_summary_and_embedding(post):
     try:
         from app.services.qwen_service import qwen_service
         post.content_embedding = qwen_service.get_embedding(post.title + " " + post.content[:500])
+    except Exception:
+        pass
+
+    # 同步 Faiss 向量索引（失败不影响主流程）
+    try:
+        from app.services.vector_index import post_vector_index
+        if post.content_embedding:
+            post_vector_index.add_post(post.id, post.content_embedding)
     except Exception:
         pass
 
@@ -167,6 +181,11 @@ def _delete_post_from_neo4j(post_id):
         )
     except Exception:
         pass
+    try:
+        from app.services.vector_index import post_vector_index
+        post_vector_index.remove_post(post_id)
+    except Exception:
+        pass
 
 
 def _delete_comment_relation_if_needed(user_id, post_id):
@@ -250,25 +269,32 @@ def create_post():
     audit = content_audit_service.audit_text(title + '\n' + content)
 
     if not audit['passed']:
-        post.status = 'rejected'
-        post.reject_reason = audit['details']
-        db.session.commit()
-
-        # 通过通知中心告知用户审核未通过及原因
+        reason_text = build_audit_rejection_reason(
+            reason=None,
+            audit_labels=audit.get('labels', []),
+            audit_details=audit.get('details'),
+        )
+        notification_content = build_rejection_notification_content(
+            post_title=title,
+            source='machine',
+            reason=reason_text,
+            audit_labels=audit.get('labels', []),
+            audit_details=audit.get('details'),
+        )
+        db.session.rollback()
         from app.models.notification import create_notification
         create_notification(
             user_id=g.current_user.id,
             sender_id=None,
             notification_type='system',
-            post_id=post.id,
-            content=f"您的帖子《{title}》未通过机器审核：{audit['details']}",
+            content=notification_content,
         )
         db.session.commit()
 
         return jsonify({
             "error": "内容未通过审核",
             "labels": audit['labels'],
-            "details": audit['details'],
+            "details": reason_text,
         }), 403
 
     # 机器审核通过，状态变为 published，进入管理员可复审列表
@@ -335,6 +361,16 @@ def delete_post(post_id):
         return jsonify({"error": "无权删除该帖子"}), 403
 
     db.session.execute(db.delete(UserBehavior).filter_by(post_id=post_id))
+    db.session.execute(
+        db.update(Notification)
+        .where(Notification.post_id == post_id)
+        .values(post_id=None)
+    )
+    db.session.execute(
+        db.update(Message)
+        .where(Message.linked_post_id == post_id)
+        .values(linked_post_id=None)
+    )
     post.tags = []
     db.session.delete(post)
     db.session.commit()

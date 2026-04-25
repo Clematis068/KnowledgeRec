@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'), override=True)
 
 
 class Config:
@@ -26,7 +26,7 @@ class Config:
     # 通义千问 (DashScope)
     DASHSCOPE_API_KEY = os.getenv('DASHSCOPE_API_KEY', '')
     DASHSCOPE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-    QWEN_MODEL = os.getenv('QWEN_MODEL', 'qwen-max')
+    QWEN_MODEL = os.getenv('QWEN_MODEL', 'qwen3.6-flash')
 
     # 邮件验证码（未配置 SMTP 时自动降级为开发模式）
     SMTP_HOST = os.getenv('SMTP_HOST', '')

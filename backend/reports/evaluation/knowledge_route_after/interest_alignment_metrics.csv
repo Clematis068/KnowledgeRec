@@ -1,7 +1,0 @@
-config,k,precision,recall,hit_rate,interest_tag_recall,samples
-without_hot,5,0.68,0.021848,0.8,0.4,5
-without_hot,10,0.52,0.029414,1.0,0.4,5
-without_hot,20,0.37,0.042055,1.0,0.533333,5
-with_hot,5,0.72,0.021436,1.0,0.466667,5
-with_hot,10,0.52,0.028417,1.0,0.466667,5
-with_hot,20,0.39,0.043143,1.0,0.533333,5

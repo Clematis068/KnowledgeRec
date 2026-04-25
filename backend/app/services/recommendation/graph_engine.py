@@ -338,3 +338,173 @@ class GraphEngine:
             'BROWSED': '浏览过',
         }
         return mapping.get(behavior_type, '看过')
+
+    # ════════════════════════════════════════════════════════════════
+    # Graph-RAG 检索端：为每个候选帖子返回多条结构化路径证据
+    # 与 explain_paths() 的区别：
+    #   - explain_paths 只保留「最优」一条路径（用于前端卡片展示）；
+    #   - retrieve_paths_context 保留多种路径类型各一条，形成"检索结果集"，
+    #     供 LLM 做跨路径推理（Graph-RAG 的 R 端）
+    # ════════════════════════════════════════════════════════════════
+
+    def retrieve_paths_context(self, user_id, post_ids, max_per_post=3):
+        """为一批候选帖子批量检索多类图路径，作为 Graph-RAG 的检索证据。
+
+        返回:
+            {
+                post_id: {
+                    "paths": [   # 按优先级排序的多条路径
+                        {"type": "social_1hop", "text": "...", "metadata": {...}},
+                        {"type": "shared_tag", "text": "...", "metadata": {...}},
+                        ...
+                    ]
+                }
+            }
+        """
+        pids = [int(pid) for pid in (post_ids or []) if pid is not None]
+        if not pids:
+            return {}
+
+        # 每个 post_id 维护一个按 priority 排序的 path 列表
+        bucket = {pid: [] for pid in pids}
+
+        def _push(rows, path_type, make_path):
+            priority = self._PATH_PRIORITY[path_type]
+            for row in rows:
+                pid = row.get('post_id')
+                if pid is None:
+                    continue
+                path = make_path(row)
+                path['type'] = path_type
+                bucket.setdefault(pid, []).append((priority, path))
+
+        # ── 路径 1：一阶社交 ──
+        _push(
+            neo4j_service.run_query(
+                """
+                UNWIND $pids AS pid
+                MATCH (u:User {id: $uid})-[:FOLLOWS]->(f:User)-[r:LIKED|FAVORITED]->(candidate:Post {id: pid})
+                WITH pid, f, r,
+                     CASE type(r) WHEN 'FAVORITED' THEN 2 WHEN 'LIKED' THEN 1 ELSE 0 END AS rank
+                ORDER BY pid, rank DESC
+                WITH pid, collect({friend_id: f.id, friend_name: f.username, behavior: type(r)})[0] AS best
+                RETURN pid AS post_id, best.friend_id AS friend_id,
+                       best.friend_name AS friend_name, best.behavior AS behavior
+                """,
+                {"uid": user_id, "pids": pids},
+            ),
+            'social_1hop',
+            lambda row: {
+                'text': f"你关注的用户「{row.get('friend_name') or ('用户#' + str(row.get('friend_id')))}」"
+                        f"{self._behavior_phrase(row['behavior'])}这篇帖子",
+                'metadata': {
+                    'friend_id': row.get('friend_id'),
+                    'friend_name': row.get('friend_name'),
+                    'behavior': row.get('behavior'),
+                },
+            },
+        )
+
+        # ── 路径 2：二阶社交 ──
+        _push(
+            neo4j_service.run_query(
+                """
+                UNWIND $pids AS pid
+                MATCH (u:User {id: $uid})-[:FOLLOWS]->(:User)-[:FOLLOWS]->(f2:User)-[r:LIKED|FAVORITED]->(candidate:Post {id: pid})
+                WHERE f2 <> u AND NOT (u)-[:FOLLOWS]->(f2)
+                WITH pid, f2, r,
+                     CASE type(r) WHEN 'FAVORITED' THEN 2 WHEN 'LIKED' THEN 1 ELSE 0 END AS rank
+                ORDER BY pid, rank DESC
+                WITH pid, collect({friend_id: f2.id, friend_name: f2.username, behavior: type(r)})[0] AS best
+                RETURN pid AS post_id, best.friend_id AS friend_id,
+                       best.friend_name AS friend_name, best.behavior AS behavior
+                """,
+                {"uid": user_id, "pids": pids},
+            ),
+            'social_2hop',
+            lambda row: {
+                'text': f"你关注链路中的用户「{row.get('friend_name') or ('用户#' + str(row.get('friend_id')))}」"
+                        f"{self._behavior_phrase(row['behavior'])}这篇帖子",
+                'metadata': {
+                    'friend_id': row.get('friend_id'),
+                    'friend_name': row.get('friend_name'),
+                    'behavior': row.get('behavior'),
+                },
+            },
+        )
+
+        # ── 路径 3：共享标签（带种子帖信息） ──
+        _push(
+            neo4j_service.run_query(
+                """
+                UNWIND $pids AS pid
+                MATCH (u:User {id: $uid})-[r:LIKED|FAVORITED|COMMENTED|BROWSED]->(seed:Post)-[:TAGGED_WITH]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: pid})
+                WITH pid, seed, t, r,
+                     CASE type(r) WHEN 'FAVORITED' THEN 4 WHEN 'COMMENTED' THEN 3
+                                   WHEN 'LIKED' THEN 2 WHEN 'BROWSED' THEN 1 ELSE 0 END AS rank
+                ORDER BY pid, rank DESC
+                WITH pid, collect({seed_id: seed.id, seed_title: seed.title,
+                                   tag_name: t.name, behavior: type(r)})[0] AS best
+                RETURN pid AS post_id, best.seed_id AS seed_id, best.seed_title AS seed_title,
+                       best.tag_name AS tag_name, best.behavior AS behavior
+                """,
+                {"uid": user_id, "pids": pids},
+            ),
+            'shared_tag',
+            lambda row: {
+                'text': f"你{self._behavior_past_phrase(row['behavior'])}《"
+                        f"{row.get('seed_title') or ('帖子#' + str(row.get('seed_id')))}》，"
+                        f"与这篇共享标签「{row['tag_name']}」",
+                'metadata': {
+                    'seed_id': row.get('seed_id'),
+                    'seed_title': row.get('seed_title'),
+                    'tag_name': row.get('tag_name'),
+                    'behavior': row.get('behavior'),
+                },
+            },
+        )
+
+        # ── 路径 4：兴趣标签命中 ──
+        _push(
+            neo4j_service.run_query(
+                """
+                UNWIND $pids AS pid
+                MATCH (u:User {id: $uid})-[:INTERESTED_IN]->(t:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: pid})
+                WITH pid, collect(t.name)[0] AS tag_name
+                RETURN pid AS post_id, tag_name
+                """,
+                {"uid": user_id, "pids": pids},
+            ),
+            'interest_tag',
+            lambda row: {
+                'text': f"命中你的兴趣标签「{row['tag_name']}」",
+                'metadata': {'tag_name': row.get('tag_name')},
+            },
+        )
+
+        # ── 路径 5：兴趣领域回退 ──
+        _push(
+            neo4j_service.run_query(
+                """
+                UNWIND $pids AS pid
+                MATCH (u:User {id: $uid})-[:INTERESTED_DOMAIN]->(d:Domain)<-[:BELONGS_TO]-(:Tag)<-[:TAGGED_WITH]-(candidate:Post {id: pid})
+                WITH pid, collect(d.name)[0] AS domain_name
+                RETURN pid AS post_id, domain_name
+                """,
+                {"uid": user_id, "pids": pids},
+            ),
+            'interest_domain',
+            lambda row: {
+                'text': f"属于你持续关注的领域「{row['domain_name']}」",
+                'metadata': {'domain_name': row.get('domain_name')},
+            },
+        )
+
+        # 每个 post 按 priority 排序，取前 max_per_post 条
+        result = {}
+        for pid, entries in bucket.items():
+            if not entries:
+                continue
+            entries.sort(key=lambda x: x[0])
+            result[pid] = {'paths': [p for _, p in entries[:max_per_post]]}
+        return result

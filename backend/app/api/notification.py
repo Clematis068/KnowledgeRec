@@ -86,6 +86,22 @@ def mark_read(notification_id):
     return jsonify({'message': '已标记已读'})
 
 
+@notification_bp.route('/<int:notification_id>', methods=['DELETE'])
+@login_required
+def delete_notification(notification_id):
+    """删除单条通知"""
+    notification = db.session.scalar(db.select(Notification).filter_by(
+        id=notification_id,
+        user_id=g.current_user.id,
+    ))
+    if not notification:
+        return jsonify({'error': '通知不存在'}), 404
+
+    db.session.delete(notification)
+    db.session.commit()
+    return jsonify({'message': '已删除通知'})
+
+
 @notification_bp.route('/read-all', methods=['PUT'])
 @login_required
 def mark_all_read():

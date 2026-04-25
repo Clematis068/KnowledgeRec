@@ -250,7 +250,7 @@ def main():
                 btype = "browse"
                 view_counts[new_pid] += 1
 
-            # 时间：随机分布在过去 90 天
+            # 时间：2001前的分配在随机时间戳，之后的按数据集来即可
             days_ago = random.uniform(0, 90)
             created_at = now - timedelta(days=days_ago)
 

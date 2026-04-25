@@ -314,8 +314,7 @@ def get_user_posts(user_id):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     stmt = db.select(Post).filter_by(author_id=user_id).order_by(Post.created_at.desc())
-    if not g.current_user or g.current_user.id != user_id:
-        stmt = apply_post_visibility_query(stmt, g.current_user.id if g.current_user else None)
+    stmt = apply_post_visibility_query(stmt, g.current_user.id if g.current_user else None)
     pagination = db.paginate(stmt, page=page, per_page=per_page)
     return jsonify({
         "posts": [p.to_dict() for p in pagination.items],

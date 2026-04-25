@@ -88,6 +88,11 @@ body,
   min-height: 100vh;
 }
 
+html,
+body {
+  overflow-x: auto;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -705,11 +710,6 @@ select:focus-visible {
   background: transparent;
 }
 
-@media (max-width: 768px) {
-  .page-header {
-    padding-bottom: 16px;
-  }
-}
 
 @media (prefers-reduced-motion: reduce) {
   *,

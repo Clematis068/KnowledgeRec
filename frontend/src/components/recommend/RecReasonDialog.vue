@@ -17,7 +17,18 @@
         <span class="reason-kicker">推荐说明</span>
         <h3>推荐给你的原因</h3>
       </div>
-      <div v-if="graphPathText" class="reason-evidence">
+      <div v-if="graphPaths.length" class="reason-evidence">
+        <span class="evidence-label">Graph-RAG 检索路径</span>
+        <ul class="path-list">
+          <li v-for="(p, idx) in graphPaths" :key="idx" class="path-item">
+            <span class="path-badge" :class="`path-badge--${p.type}`">
+              {{ pathTypeLabel(p.type) }}
+            </span>
+            <span class="path-text">{{ p.text }}</span>
+          </li>
+        </ul>
+      </div>
+      <div v-else-if="graphPathText" class="reason-evidence">
         <span class="evidence-label">图谱依据</span>
         <div class="evidence-text">{{ graphPathText }}</div>
       </div>
@@ -37,8 +48,8 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { getRecommendReason } from '../../api/recommendation'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { streamRecommendReason } from '../../api/recommendation'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -52,12 +63,22 @@ const emit = defineEmits(['update:modelValue'])
 const visible = ref(false)
 const reason = ref('')
 const graphPath = ref(null)
+const graphPaths = ref([])
 const topChannels = ref([])
 const loading = ref(false)
 
 const graphPathText = computed(() => (
   graphPath.value?.text || props.recItem?.graph_path_text || ''
 ))
+
+const PATH_TYPE_LABELS = {
+  social_1hop: '直接社交',
+  social_2hop: '二阶社交',
+  shared_tag: '标签关联',
+  interest_tag: '兴趣命中',
+  interest_domain: '领域匹配',
+}
+const pathTypeLabel = (t) => PATH_TYPE_LABELS[t] || t || '图路径'
 
 function extractChannelScores(item) {
   if (!item) return null
@@ -69,26 +90,53 @@ function extractChannelScores(item) {
   return Object.keys(scores).length ? scores : null
 }
 
-watch(() => props.modelValue, async (val) => {
+let closeStream = null
+
+function teardown() {
+  if (closeStream) {
+    closeStream()
+    closeStream = null
+  }
+}
+
+watch(() => props.modelValue, (val) => {
   visible.value = val
   if (val && props.userId && props.postId) {
+    teardown()
     loading.value = true
     reason.value = ''
     graphPath.value = null
+    graphPaths.value = []
     topChannels.value = []
-    try {
-      const scores = extractChannelScores(props.recItem)
-      const data = await getRecommendReason(props.userId, props.postId, scores)
-      reason.value = data.reason
-      graphPath.value = data.graph_path || null
-      topChannels.value = data.top_channels || []
-    } catch {
-      reason.value = '获取推荐理由失败'
-    } finally {
-      loading.value = false
-    }
+
+    const scores = extractChannelScores(props.recItem)
+    closeStream = streamRecommendReason(props.userId, props.postId, scores, {
+      onMeta: (meta) => {
+        graphPath.value = meta.graph_path || null
+        graphPaths.value = Array.isArray(meta.graph_paths) ? meta.graph_paths : []
+        topChannels.value = meta.top_channels || []
+        // meta 到达即可关闭骨架屏，文本区域开始显示增量内容
+        loading.value = false
+      },
+      onDelta: (text) => {
+        reason.value += text
+      },
+      onDone: () => {
+        loading.value = false
+        closeStream = null
+      },
+      onError: (msg) => {
+        if (!reason.value) reason.value = msg || '获取推荐理由失败'
+        loading.value = false
+        closeStream = null
+      },
+    })
+  } else if (!val) {
+    teardown()
   }
 })
+
+onBeforeUnmount(teardown)
 
 watch(visible, (val) => {
   if (!val) emit('update:modelValue', false)
@@ -194,5 +242,44 @@ watch(visible, (val) => {
   background: rgba(255, 255, 255, 0.85);
   color: var(--kr-text);
   border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.path-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.path-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--kr-text);
+}
+
+.path-badge {
+  flex-shrink: 0;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--kr-text-soft);
+}
+
+.path-badge--social_1hop { background: #3b82f6; }
+.path-badge--social_2hop { background: #8b5cf6; }
+.path-badge--shared_tag { background: #10b981; }
+.path-badge--interest_tag { background: #f59e0b; }
+.path-badge--interest_domain { background: #6b7280; }
+
+.path-text {
+  flex: 1;
 }
 </style>

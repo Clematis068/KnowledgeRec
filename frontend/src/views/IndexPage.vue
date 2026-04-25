@@ -36,14 +36,10 @@ function logout() {
             <span class="hero-mark">
               <el-icon :size="24"><Connection /></el-icon>
             </span>
-            <h1>把帖子、作者与兴趣组织成可解释的推荐系统。</h1>
+            <h1>知识社区</h1>
           </div>
-          <p class="hero-subtitle">
-            知识推荐社区聚合推荐流、热门趋势、搜索与作者关系，让用户在一个统一界面里理解内容为什么出现。
-          </p>
-
           <div class="hero-actions">
-            <el-button type="primary" size="large" @click="goTo('/recommend')">进入推荐流</el-button>
+            <el-button type="primary" size="large" @click="goTo('/recommend')">进入推荐</el-button>
             <el-button size="large" plain @click="goTo('/hot')">查看热门趋势</el-button>
           </div>
         </div>
@@ -52,21 +48,17 @@ function logout() {
           <div class="panel-kicker">Platform Access</div>
           <div class="panel-grid">
             <div class="panel-metric">
-              <span class="metric-value">3</span>
-              <span class="metric-label">核心内容视图</span>
-            </div>
-            <div class="panel-metric">
               <span class="metric-value">24h</span>
               <span class="metric-label">实时热门刷新</span>
             </div>
             <div class="panel-metric">
               <span class="metric-value">Explainable</span>
-              <span class="metric-label">推荐理由可追踪</span>
+              <span class="metric-label">实时获取推荐理由</span>
             </div>
           </div>
 
           <div class="index-search">
-            <div class="search-kicker">Search Entry</div>
+            <div class="search-kicker">Search</div>
             <label class="search-field">
               <span class="search-field-icon" aria-hidden="true">
                 <el-icon :size="20"><Search /></el-icon>
@@ -89,18 +81,18 @@ function logout() {
       <div class="signal-grid">
         <article class="signal-card">
           <span class="signal-index">01</span>
-          <h2>推荐流</h2>
-          <p>按推荐、关注、最新三种信号浏览内容，并保留实验调试入口。</p>
+          <h2>推荐</h2>
+          <p>按推荐、关注、最新三部分浏览内容，还包含我的特别推荐：）</p>
         </article>
         <article class="signal-card">
           <span class="signal-index">02</span>
-          <h2>趋势观察</h2>
-          <p>按热度查看当前最受关注的帖子，把浏览入口和热度排序明确分离。</p>
+          <h2>趋势</h2>
+          <p>查看目前最热门的帖子。</p>
         </article>
         <article class="signal-card">
           <span class="signal-index">03</span>
-          <h2>账号与兴趣</h2>
-          <p>注册时完成邮箱验证与兴趣建模，后续推荐和作者关注都会基于这些信号。</p>
+          <h2>个性化推荐</h2>
+          <p>注册时完成兴趣选择，后续推荐都会考虑这部分内容。</p>
         </article>
       </div>
     </section>
@@ -109,9 +101,9 @@ function logout() {
       <div class="entry-shell">
         <div class="entry-copy">
           <p class="entry-eyebrow">Community Access</p>
-          <h2>{{ authStore.isLoggedIn ? `你好，${authStore.username}` : '登录后可解锁个性化推荐与发帖能力。' }}</h2>
+          <h2>{{ authStore.isLoggedIn ? `你好，${authStore.username}` : '登录后解锁个性化推荐' }}</h2>
           <p>
-            {{ authStore.isLoggedIn ? '你可以继续浏览推荐、发布内容，或回到首页查看热点趋势。' : '新用户可以先注册账号并完成兴趣选择，已有账号可直接登录进入推荐页。' }}
+            {{ authStore.isLoggedIn ? '你可以继续浏览推荐、发布内容，或回到首页查看热点趋势。' : '新用户可以先注册账号，已有账号可直接登录进入推荐。' }}
           </p>
         </div>
 

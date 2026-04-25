@@ -35,13 +35,10 @@ def apply_post_visibility_query(query, user_id):
 
 
 def is_post_visible_to_user(post, user_id):
-    # 被下架/拒绝的帖子对普通用户不可见（作者自己可见以便查看原因）
+    # 仅发布态帖子可见；审核拒绝内容不对用户展示
     if getattr(post, 'status', 'published') not in ('published', None):
-        if post.author_id != user_id:
-            return False
+        return False
     if not user_id:
-        return True
-    if post.author_id == user_id:
         return True
 
     blocked_author_ids = get_blocked_author_ids(user_id)

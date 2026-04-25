@@ -34,6 +34,14 @@ function handleUploadSuccess(res) {
 }
 
 function beforeUpload(file) {
+  const isJpgOrPng =
+    file.type === 'image/jpeg' ||
+    file.type === 'image/png' ||
+    /\.(jpe?g|png)$/i.test(file.name || '')
+  if (!isJpgOrPng) {
+    ElMessage.error('封面图片仅支持 JPG / PNG 格式')
+    return false
+  }
   const isLt5M = file.size / 1024 / 1024 < 5
   if (!isLt5M) {
     ElMessage.error('图片大小不能超过 5MB')
@@ -83,6 +91,7 @@ onMounted(fetchDomains)
         <el-upload
           class="cover-uploader"
           action="/api/upload/image"
+          accept="image/jpeg,image/png"
           :show-file-list="false"
           :on-success="handleUploadSuccess"
           :before-upload="beforeUpload"

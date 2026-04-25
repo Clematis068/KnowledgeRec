@@ -3,7 +3,7 @@ from app import db
 from app.models.post import Post
 from app.models.user import User
 from app.utils.auth import optional_login
-from app.utils.content_filter import filter_posts
+from app.utils.content_filter import apply_post_visibility_query
 from app.utils.helpers import cosine_similarity
 
 search_bp = Blueprint('search', __name__)
@@ -53,8 +53,8 @@ def _search_all(q, page, per_page):
             Post.content.like(like_pattern),
         )
     )
+    post_stmt = apply_post_visibility_query(post_stmt, g.current_user.id if g.current_user else None)
     candidates = db.session.scalars(post_stmt).all()
-    candidates = filter_posts(candidates, g.current_user.id if g.current_user else None)
 
     try:
         from app.services.qwen_service import qwen_service
@@ -107,8 +107,8 @@ def _search_posts(q, page, per_page):
             Post.content.like(like_pattern),
         )
     )
+    stmt = apply_post_visibility_query(stmt, g.current_user.id if g.current_user else None)
     candidates = db.session.scalars(stmt).all()
-    candidates = filter_posts(candidates, g.current_user.id if g.current_user else None)
 
     # 2. 千问 Embedding 语义排序
     try:

@@ -8,7 +8,9 @@ from app import db
 from app.models.user import User
 from app.models.post import Post
 from app.models.behavior import UserBehavior
+from app.models.notification import Notification, Message
 from app.utils.auth import admin_required
+from app.utils.notification_payloads import build_rejection_notification_content
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -22,14 +24,19 @@ def overview_stats():
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     total_users = db.session.scalar(func.count(User.id)) or 0
-    total_posts = db.session.scalar(func.count(Post.id)) or 0
+    total_posts = db.session.scalar(
+        db.select(func.count(Post.id)).filter(Post.status != 'rejected')
+    ) or 0
     total_behaviors = db.session.scalar(func.count(UserBehavior.id)) or 0
 
     new_users_today = db.session.scalar(
         db.select(func.count(User.id)).filter(User.created_at >= today)
     ) or 0
     new_posts_today = db.session.scalar(
-        db.select(func.count(Post.id)).filter(Post.created_at >= today)
+        db.select(func.count(Post.id)).filter(
+            Post.created_at >= today,
+            Post.status != 'rejected',
+        )
     ) or 0
     new_behaviors_today = db.session.scalar(
         db.select(func.count(UserBehavior.id)).filter(UserBehavior.created_at >= today)
@@ -54,7 +61,9 @@ def overview_stats():
         ) or 0
         day_posts = db.session.scalar(
             db.select(func.count(Post.id)).filter(
-                Post.created_at >= day_start, Post.created_at < day_end
+                Post.created_at >= day_start,
+                Post.created_at < day_end,
+                Post.status != 'rejected',
             )
         ) or 0
         trend.append({
@@ -94,7 +103,7 @@ def list_users():
         stmt = stmt.filter(User.status == status)
     stmt = stmt.order_by(User.created_at.desc())
 
-    pagination = db.paginate(stmt, page=page, per_page=per_page)
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
     return jsonify({
         'users': [u.to_dict() for u in pagination.items],
         'total': pagination.total,
@@ -139,14 +148,20 @@ def list_posts():
     keyword = request.args.get('keyword', '').strip()
     status = request.args.get('status', '').strip()
 
-    stmt = db.select(Post)
+    stmt = db.select(Post).filter(Post.status != 'rejected')
     if keyword:
         stmt = stmt.filter(Post.title.contains(keyword))
+    if status == 'rejected':
+        return jsonify({
+            'posts': [],
+            'total': 0,
+            'page': page,
+        })
     if status:
         stmt = stmt.filter(Post.status == status)
     stmt = stmt.order_by(Post.created_at.desc())
 
-    pagination = db.paginate(stmt, page=page, per_page=per_page)
+    pagination = db.paginate(stmt, page=page, per_page=per_page, error_out=False)
     return jsonify({
         'posts': [p.to_dict() for p in pagination.items],
         'total': pagination.total,
@@ -180,12 +195,18 @@ def reject_post(post_id):
     post.reject_reason = reason
 
     from app.models.notification import create_notification
+    notification_content = build_rejection_notification_content(
+        post_title=post.title,
+        source='admin',
+        reason=reason,
+        audit_labels=[],
+        audit_details=reason,
+    )
     create_notification(
         user_id=post.author_id,
         sender_id=g.current_user.id,
         notification_type='system',
-        post_id=post.id,
-        content=f"您的帖子《{post.title}》未通过管理员审核：{reason}",
+        content=notification_content,
     )
 
     db.session.commit()
@@ -200,6 +221,12 @@ def remove_post(post_id):
     if not post:
         return jsonify({'error': '帖子不存在'}), 404
     db.session.execute(db.delete(UserBehavior).filter_by(post_id=post_id))
+    db.session.execute(
+        db.update(Notification).where(Notification.post_id == post_id).values(post_id=None)
+    )
+    db.session.execute(
+        db.update(Message).where(Message.linked_post_id == post_id).values(linked_post_id=None)
+    )
     post.tags = []
     db.session.delete(post)
     db.session.commit()
