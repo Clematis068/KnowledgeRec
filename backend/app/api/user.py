@@ -314,7 +314,11 @@ def get_user_posts(user_id):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     stmt = db.select(Post).filter_by(author_id=user_id).order_by(Post.created_at.desc())
-    stmt = apply_post_visibility_query(stmt, g.current_user.id if g.current_user else None)
+    is_self = g.current_user and g.current_user.id == user_id
+    if is_self:
+        stmt = stmt.filter(Post.status != 'removed')
+    else:
+        stmt = apply_post_visibility_query(stmt, g.current_user.id if g.current_user else None)
     pagination = db.paginate(stmt, page=page, per_page=per_page)
     return jsonify({
         "posts": [p.to_dict() for p in pagination.items],

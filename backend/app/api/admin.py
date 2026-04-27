@@ -25,7 +25,7 @@ def overview_stats():
 
     total_users = db.session.scalar(func.count(User.id)) or 0
     total_posts = db.session.scalar(
-        db.select(func.count(Post.id)).filter(Post.status != 'rejected')
+        db.select(func.count(Post.id)).filter(Post.status.notin_(('rejected', 'removed')))
     ) or 0
     total_behaviors = db.session.scalar(func.count(UserBehavior.id)) or 0
 
@@ -35,7 +35,7 @@ def overview_stats():
     new_posts_today = db.session.scalar(
         db.select(func.count(Post.id)).filter(
             Post.created_at >= today,
-            Post.status != 'rejected',
+            Post.status.notin_(('rejected', 'removed')),
         )
     ) or 0
     new_behaviors_today = db.session.scalar(
@@ -63,7 +63,7 @@ def overview_stats():
             db.select(func.count(Post.id)).filter(
                 Post.created_at >= day_start,
                 Post.created_at < day_end,
-                Post.status != 'rejected',
+                Post.status.notin_(('rejected', 'removed')),
             )
         ) or 0
         trend.append({
@@ -148,15 +148,9 @@ def list_posts():
     keyword = request.args.get('keyword', '').strip()
     status = request.args.get('status', '').strip()
 
-    stmt = db.select(Post).filter(Post.status != 'rejected')
+    stmt = db.select(Post)
     if keyword:
         stmt = stmt.filter(Post.title.contains(keyword))
-    if status == 'rejected':
-        return jsonify({
-            'posts': [],
-            'total': 0,
-            'page': page,
-        })
     if status:
         stmt = stmt.filter(Post.status == status)
     stmt = stmt.order_by(Post.created_at.desc())
@@ -172,13 +166,21 @@ def list_posts():
 @admin_bp.route('/posts/<int:post_id>/approve', methods=['POST'])
 @admin_required
 def approve_post(post_id):
-    """通过审核"""
+    """通过审核：状态置为 published，并同步到 Neo4j / 自动打标"""
     post = db.session.get(Post, post_id)
     if not post:
         return jsonify({'error': '帖子不存在'}), 404
     post.status = 'published'
     post.reject_reason = None
     db.session.commit()
+
+    try:
+        from app.api.post import _sync_post_to_neo4j, _auto_tag_post_async
+        _sync_post_to_neo4j(post)
+        _auto_tag_post_async(post.id, post.domain_id, source_user_id=post.author_id)
+    except Exception:
+        pass
+
     return jsonify({'message': '帖子已通过审核'})
 
 
@@ -216,19 +218,11 @@ def reject_post(post_id):
 @admin_bp.route('/posts/<int:post_id>/remove', methods=['POST'])
 @admin_required
 def remove_post(post_id):
-    """彻底删除帖子"""
+    """软删除帖子：标记为 removed，不再展示但记录可追溯"""
     post = db.session.get(Post, post_id)
     if not post:
         return jsonify({'error': '帖子不存在'}), 404
-    db.session.execute(db.delete(UserBehavior).filter_by(post_id=post_id))
-    db.session.execute(
-        db.update(Notification).where(Notification.post_id == post_id).values(post_id=None)
-    )
-    db.session.execute(
-        db.update(Message).where(Message.linked_post_id == post_id).values(linked_post_id=None)
-    )
-    post.tags = []
-    db.session.delete(post)
+    post.status = 'removed'
     db.session.commit()
 
     try:

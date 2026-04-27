@@ -5,9 +5,13 @@
         <span class="eyebrow">{{ post.domain_name || '知识内容' }}</span>
         <span class="eyebrow-sep">·</span>
         <span class="eyebrow">{{ post.author_name || '匿名作者' }}</span>
+        <span v-if="statusLabel" class="status-pill" :class="statusClass">{{ statusLabel }}</span>
       </div>
 
       <h3 class="title">{{ post.title }}</h3>
+      <p v-if="post.status === 'rejected' && post.reject_reason" class="reject-reason">
+        未通过原因：{{ post.reject_reason }}
+      </p>
       <p class="summary">{{ summaryText }}</p>
 
       <div v-if="previewTags.length" class="tag-row">
@@ -46,6 +50,12 @@ const summaryText = computed(() => (
 ))
 
 const previewTags = computed(() => (props.post.tags || []).slice(0, 3))
+
+const statusLabel = computed(() => {
+  const map = { pending: '待审核', rejected: '未通过', removed: '已删除' }
+  return map[props.post.status] || ''
+})
+const statusClass = computed(() => `status-${props.post.status}`)
 
 const formattedDate = computed(() => {
   if (!props.post.created_at) return '最近'
@@ -115,6 +125,38 @@ function goToDetail() {
 
 .eyebrow-sep {
   color: var(--cds-text-muted);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 999px;
+  line-height: 1.4;
+}
+.status-pill.status-pending {
+  background: var(--cds-yellow-10, #fef3c7);
+  color: #b45309;
+}
+.status-pill.status-rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.status-pill.status-removed {
+  background: #e5e7eb;
+  color: #4b5563;
+}
+
+.reject-reason {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-left: 3px solid #b91c1c;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .title {

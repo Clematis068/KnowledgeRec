@@ -242,7 +242,7 @@ def _refresh_user_interest_if_needed(user_id, behavior_type=None, duration=None)
 @post_bp.route('/create', methods=['POST'])
 @login_required
 def create_post():
-    """创建帖子：先入库为 pending，机器审核通过后变为 published，不通过则 rejected 并通知作者"""
+    """创建帖子：机器审核通过 → pending（待管理员复审），不通过 → rejected（保留供作者修改重审）"""
     data = request.get_json() or {}
     title = data.get('title', '').strip()
     content = data.get('content', '').strip()
@@ -250,7 +250,6 @@ def create_post():
     if not title or not content or not domain_id:
         return jsonify({"error": "标题、正文和领域不能为空"}), 400
 
-    # 先入库，状态为 pending
     post = Post(
         title=title,
         content=content,
@@ -264,7 +263,6 @@ def create_post():
     _apply_post_context_targets(post, data)
     post.tags = []
 
-    # 机器审核
     from app.services.content_audit_service import content_audit_service
     audit = content_audit_service.audit_text(title + '\n' + content)
 
@@ -274,36 +272,29 @@ def create_post():
             audit_labels=audit.get('labels', []),
             audit_details=audit.get('details'),
         )
-        notification_content = build_rejection_notification_content(
-            post_title=title,
-            source='machine',
-            reason=reason_text,
-            audit_labels=audit.get('labels', []),
-            audit_details=audit.get('details'),
-        )
-        db.session.rollback()
+        post.status = 'rejected'
+        post.reject_reason = reason_text
+        db.session.commit()
+
         from app.models.notification import create_notification
         create_notification(
             user_id=g.current_user.id,
             sender_id=None,
             notification_type='system',
-            content=notification_content,
+            content=build_rejection_notification_content(
+                post_title=title,
+                source='machine',
+                reason=reason_text,
+                audit_labels=audit.get('labels', []),
+                audit_details=audit.get('details'),
+            ),
         )
         db.session.commit()
+        return jsonify(post.to_dict()), 201
 
-        return jsonify({
-            "error": "内容未通过审核",
-            "labels": audit['labels'],
-            "details": reason_text,
-        }), 403
-
-    # 机器审核通过，状态变为 published，进入管理员可复审列表
-    post.status = 'published'
+    # 机审通过：保持 pending，等待管理员复审；生成摘要/Embedding 便于审核与后续复用
     _refresh_post_summary_and_embedding(post)
     db.session.commit()
-    _sync_post_to_neo4j(post)
-    _auto_tag_post_async(post.id, domain_id, source_user_id=g.current_user.id)
-
     return jsonify(post.to_dict()), 201
 
 
@@ -314,6 +305,8 @@ def get_post(post_id):
     post = db.session.get(Post, post_id)
     if not post:
         return jsonify({"error": "帖子不存在"}), 404
+    if g.current_user and post.author_id == g.current_user.id:
+        return jsonify(post.to_dict())
     if g.current_user and not is_post_visible_to_user(post, g.current_user.id):
         return jsonify({"error": "帖子不存在"}), 404
     return jsonify(post.to_dict())
@@ -322,12 +315,14 @@ def get_post(post_id):
 @post_bp.route('/<int:post_id>', methods=['PUT'])
 @login_required
 def update_post(post_id):
-    """编辑帖子，仅作者本人可操作"""
+    """编辑帖子，仅作者本人可操作；编辑后重新机审并回到 pending（机审失败则保持 rejected）"""
     post = db.session.get(Post, post_id)
     if not post:
         return jsonify({"error": "帖子不存在"}), 404
     if post.author_id != g.current_user.id:
         return jsonify({"error": "无权编辑该帖子"}), 403
+    if post.status == 'removed':
+        return jsonify({"error": "帖子已被删除，无法编辑"}), 403
 
     data = request.get_json() or {}
     title = data.get('title', '').strip()
@@ -342,11 +337,24 @@ def update_post(post_id):
     post.image_url = data.get('image_url')
     _apply_post_context_targets(post, data)
     post.tags = []
-    _refresh_post_summary_and_embedding(post)
 
+    from app.services.content_audit_service import content_audit_service
+    audit = content_audit_service.audit_text(title + '\n' + content)
+    if not audit['passed']:
+        reason_text = build_audit_rejection_reason(
+            reason=None,
+            audit_labels=audit.get('labels', []),
+            audit_details=audit.get('details'),
+        )
+        post.status = 'rejected'
+        post.reject_reason = reason_text
+        db.session.commit()
+        return jsonify(post.to_dict())
+
+    post.status = 'pending'
+    post.reject_reason = None
+    _refresh_post_summary_and_embedding(post)
     db.session.commit()
-    _sync_post_to_neo4j(post)
-    _auto_tag_post_async(post.id, domain_id, source_user_id=g.current_user.id)
     return jsonify(post.to_dict())
 
 

@@ -12,7 +12,9 @@
       <main class="app-main">
         <div class="app-main-inner">
           <router-view v-slot="{ Component, route }">
-            <component :is="Component" :key="route.fullPath" />
+            <RouteErrorBoundary :key="route.fullPath">
+              <component :is="Component" />
+            </RouteErrorBoundary>
           </router-view>
         </div>
       </main>
@@ -23,6 +25,7 @@
 <script setup>
 import AppNavbar from './AppNavbar.vue'
 import AppSidebar from './AppSidebar.vue'
+import RouteErrorBoundary from './RouteErrorBoundary.vue'
 </script>
 
 <style scoped>

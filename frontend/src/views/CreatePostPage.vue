@@ -66,7 +66,13 @@ async function handleSubmit() {
   submitting.value = true
   try {
     const res = await createPost(form.value)
-    ElMessage.success('发布成功')
+    if (res.status === 'rejected') {
+      ElMessage.warning(`内容未通过机器审核：${res.reject_reason || '请修改后重新提交'}`)
+    } else if (res.status === 'pending') {
+      ElMessage.success('已提交，等待管理员审核')
+    } else {
+      ElMessage.success('发布成功')
+    }
     createdPostId.value = res.id
   } catch {
     submitting.value = false

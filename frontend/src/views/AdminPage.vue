@@ -115,6 +115,7 @@
           <el-select v-model="postStatusFilter" placeholder="状态筛选" clearable style="width: 140px" @change="loadPosts">
             <el-option label="已发布" value="published" />
             <el-option label="待审核" value="pending" />
+            <el-option label="已下架" value="rejected" />
             <el-option label="已删除" value="removed" />
           </el-select>
           <el-button @click="loadPosts">查询</el-button>
@@ -128,7 +129,8 @@
             <template #default="{ row }">
               <el-tag v-if="row.status === 'published'" type="success" size="small">已发布</el-tag>
               <el-tag v-else-if="row.status === 'pending'" type="warning" size="small">待审</el-tag>
-              <el-tag v-else-if="row.status === 'rejected'" type="danger" size="small">已拒绝</el-tag>
+              <el-tag v-else-if="row.status === 'rejected'" type="danger" size="small">已下架</el-tag>
+              <el-tag v-else-if="row.status === 'removed'" type="info" size="small">已删除</el-tag>
               <el-tag v-else type="info" size="small">{{ row.status }}</el-tag>
             </template>
           </el-table-column>
@@ -138,9 +140,9 @@
           </el-table-column>
           <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="row.status !== 'published'" type="success" text size="small" @click="handleApprove(row)">通过</el-button>
+              <el-button v-if="row.status === 'pending' || row.status === 'rejected'" type="success" text size="small" @click="handleApprove(row)">通过</el-button>
               <el-button v-if="row.status === 'published'" type="warning" text size="small" @click="handleReject(row)">下架</el-button>
-              <el-button type="danger" text size="small" @click="handleRemove(row)">删除</el-button>
+              <el-button v-if="row.status !== 'removed'" type="danger" text size="small" @click="handleRemove(row)">删除</el-button>
               <el-button text size="small" @click="router.push(`/posts/${row.id}`)">查看</el-button>
             </template>
           </el-table-column>

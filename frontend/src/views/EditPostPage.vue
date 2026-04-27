@@ -16,6 +16,7 @@ const { domains, fetchDomains } = useDomains()
 const formRef = ref()
 const loading = ref(false)
 const submitting = ref(false)
+const uploadHeaders = { Authorization: `Bearer ${localStorage.getItem('token')}` }
 
 const form = ref({
   title: '',
@@ -78,9 +79,15 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    await updatePost(route.params.id, form.value)
-    ElMessage.success('帖子已更新')
-    router.replace(`/posts/${route.params.id}`)
+    const res = await updatePost(route.params.id, form.value)
+    if (res?.status === 'rejected') {
+      ElMessage.warning(`内容未通过机器审核：${res.reject_reason || '请修改后重新提交'}`)
+    } else if (res?.status === 'pending') {
+      ElMessage.success('已提交，等待管理员审核')
+    } else {
+      ElMessage.success('帖子已更新')
+    }
+    router.replace('/my-posts')
   } catch {
     // 错误已由拦截器处理
   } finally {
@@ -115,7 +122,7 @@ onMounted(() => {
           :on-success="handleUploadSuccess"
           :before-upload="beforeUpload"
           name="file"
-          :headers="{ Authorization: `Bearer ${localStorage.getItem('token')}` }"
+          :headers="uploadHeaders"
         >
           <img v-if="form.image_url" :src="form.image_url" class="cover-preview" />
           <el-icon v-else class="cover-uploader-icon"><Plus /></el-icon>

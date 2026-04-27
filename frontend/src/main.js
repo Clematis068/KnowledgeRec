@@ -29,6 +29,10 @@ import { useAuthStore } from './stores/auth'
 const app = createApp(App)
 const pinia = createPinia()
 
+app.config.errorHandler = (err, _instance, info) => {
+  console.error('[GlobalError]', info, err)
+}
+
 const globalIcons = {
   ArrowDown,
   ChatDotRound,
