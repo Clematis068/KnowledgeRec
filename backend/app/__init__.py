@@ -66,6 +66,9 @@ def create_app():
     from .services.recommendation import recommendation_engine
     _register_precompute_job(app, recommendation_engine)
 
+    # 启动 Redis 消息队列后台 worker
+    _start_task_queue_worker(app)
+
     return app
 
 
@@ -85,3 +88,37 @@ def _register_precompute_job(app, engine):
                 logger.error("定时预计算失败: %s", e)
 
     scheduler.start()
+
+
+def _start_task_queue_worker(app, num_workers=1):
+    """随 Flask 进程启动 Redis 消息队列 worker (后台守护线程).
+
+    Werkzeug debug 模式下父进程会 fork 出 reloader, 通过 WERKZEUG_RUN_MAIN
+    环境变量保证只有真正提供服务的子进程启动 worker, 避免重复消费.
+    """
+    import logging
+    import os
+    import threading
+
+    logger = logging.getLogger('task_queue')
+
+    # debug + reloader 时只在 reloader 子进程中启动
+    if os.environ.get('WERKZEUG_RUN_MAIN') is None and app.debug:
+        # 主进程只负责 reloader, 不启 worker
+        if not os.environ.get('TASK_QUEUE_FORCE_START'):
+            logger.info('reloader 主进程, 跳过 worker 启动')
+            return
+
+    from .services.task_queue import task_queue
+
+    def _run():
+        with app.app_context():
+            logger.info('Redis 消息队列 worker 启动')
+            try:
+                task_queue.run_worker(timeout=5)
+            except Exception as e:
+                logger.error('worker 异常退出: %s', e)
+
+    for i in range(num_workers):
+        t = threading.Thread(target=_run, name=f'mq-worker-{i}', daemon=True)
+        t.start()
