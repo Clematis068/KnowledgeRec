@@ -434,10 +434,35 @@ def list_posts():
 @post_bp.route('/hot', methods=['GET'])
 @optional_login
 def hot_posts():
-    """热门帖子(按点赞数)"""
+    """热门帖子(按点赞数)：优先取近 90 天，不足时回退到全量补齐"""
+    from datetime import datetime, timedelta
     limit = request.args.get('limit', 20, type=int)
+    user_id = g.current_user.id if g.current_user else None
+
+    cutoff = datetime.now() - timedelta(days=90)
+    base_stmt = apply_post_visibility_query(db.select(Post), user_id)
+    recent_stmt = base_stmt.filter(Post.created_at >= cutoff).order_by(Post.like_count.desc()).limit(limit)
+    posts = db.session.scalars(recent_stmt).all()
+
+    if len(posts) < limit:
+        existing_ids = {p.id for p in posts}
+        fill_stmt = apply_post_visibility_query(db.select(Post), user_id)
+        if existing_ids:
+            fill_stmt = fill_stmt.filter(~Post.id.in_(existing_ids))
+        fill_stmt = fill_stmt.order_by(Post.like_count.desc()).limit(limit - len(posts))
+        posts.extend(db.session.scalars(fill_stmt).all())
+
+    return jsonify({"posts": [p.to_dict() for p in posts]})
+
+
+@post_bp.route('/random', methods=['GET'])
+@optional_login
+def random_posts():
+    """随机抽取若干帖子（用于右栏“精选内容”等弱推荐位）"""
+    from sqlalchemy.sql import func
+    limit = request.args.get('limit', 3, type=int)
     stmt = apply_post_visibility_query(db.select(Post), g.current_user.id if g.current_user else None)
-    stmt = stmt.order_by(Post.like_count.desc()).limit(limit)
+    stmt = stmt.order_by(func.rand()).limit(limit)
     posts = db.session.scalars(stmt).all()
     return jsonify({"posts": [p.to_dict() for p in posts]})
 

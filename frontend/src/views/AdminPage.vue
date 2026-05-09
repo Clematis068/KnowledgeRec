@@ -63,7 +63,7 @@
       <el-tab-pane label="用户管理" name="users">
         <div class="filter-bar">
           <el-input v-model="userKeyword" placeholder="搜索用户名/邮箱" clearable style="width: 240px" @keyup.enter="loadUsers" />
-          <el-select v-model="userStatusFilter" placeholder="状态筛选" clearable style="width: 140px" @change="loadUsers">
+          <el-select v-model="userStatusFilter" placeholder="状态筛选" clearable style="width: 200px" @change="loadUsers">
             <el-option label="正常" value="active" />
             <el-option label="已封禁" value="banned" />
           </el-select>
@@ -112,7 +112,7 @@
       <el-tab-pane label="内容审核" name="posts">
         <div class="filter-bar">
           <el-input v-model="postKeyword" placeholder="搜索帖子标题" clearable style="width: 240px" @keyup.enter="loadPosts" />
-          <el-select v-model="postStatusFilter" placeholder="状态筛选" clearable style="width: 140px" @change="loadPosts">
+          <el-select v-model="postStatusFilter" placeholder="状态筛选" clearable style="width: 200px" @change="loadPosts">
             <el-option label="已发布" value="published" />
             <el-option label="待审核" value="pending" />
             <el-option label="已下架" value="rejected" />

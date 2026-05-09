@@ -27,6 +27,11 @@ export function getHotPosts(limit = 20) {
   return request.get('/post/hot', { params: { limit } })
 }
 
+/** 随机获取若干帖子（用于右栏“精选内容”等位置） */
+export function getRandomPosts(limit = 3) {
+  return request.get('/post/random', { params: { limit } })
+}
+
 /** 获取关注用户的帖子流 */
 export function getFollowingPosts(page = 1, perPage = 20) {
   return request.get('/post/following', { params: { page, per_page: perPage } })
